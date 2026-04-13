@@ -1,0 +1,18 @@
+{
+  "name": "Annota",
+  "version": "1.0.0",
+  "description": "A fully client-side, browser-based audio editor inspired by Audacity. Built with vanilla HTML, CSS, and JavaScript -- no build tools, no npm, no frameworks. Just open `index.html` in a modern browser and start editing audio.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "typescript": "^6.0.2",
+    "vite": "^8.0.8"
+  }
+}

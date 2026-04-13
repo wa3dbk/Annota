@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Annota - Web Audio Editor</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- Menu Bar -->
+  <div id="menu-bar-container"></div>
+
+  <!-- Toolbar -->
+  <div id="toolbar">
+    <!-- File -->
+    <div class="toolbar-group">
+      <button id="btn-load" title="Load audio (Ctrl+O)"><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M1 3.5A1.5 1.5 0 0 1 2.5 2h2.764c.958 0 1.76.56 2.311 1.184C7.985 3.648 8.48 4 9 4h4.5A1.5 1.5 0 0 1 15 5.5v7a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 1 12.5v-9z"/></svg></button>
+      <button id="btn-save-project" title="Save project (Ctrl+S)"><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M2 2a1 1 0 0 1 1-1h8.586L14 3.414V13a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V2zm1 0v11h10V4H11V2H3zm2 7h6v3H5v-3zm1 1v1h4v-1H6z"/></svg></button>
+    </div>
+    <div class="toolbar-separator"></div>
+    <!-- Edit -->
+    <div class="toolbar-group">
+      <button id="btn-undo" title="Undo (Ctrl+Z)" disabled><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M2 8l5-5v3h4a4 4 0 0 1 0 8H7v-2h4a2 2 0 0 0 0-4H7v3L2 8z"/></svg></button>
+      <button id="btn-redo" title="Redo (Ctrl+Shift+Z)" disabled><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M14 8l-5-5v3H5a4 4 0 0 0 0 8h4v-2H5a2 2 0 0 1 0-4h4v3l5-5z"/></svg></button>
+    </div>
+    <div class="toolbar-separator"></div>
+    <!-- Clipboard -->
+    <div class="toolbar-group">
+      <button id="btn-cut" title="Cut (Ctrl+X)" disabled><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M4.5 1A2.5 2.5 0 0 0 3.27 5.6L7.12 8l-3.85 2.4A2.5 2.5 0 1 0 4.5 13c.49 0 .95-.14 1.34-.38L8 11.18l2.16 1.44A2.5 2.5 0 1 0 11.5 10.4L7.88 8l3.62-2.4A2.5 2.5 0 1 0 9.66 3.38L8 4.82 6.34 3.38A2.5 2.5 0 0 0 4.5 1zm0 2a.5.5 0 1 1 0 1 .5.5 0 0 1 0-1zm7 0a.5.5 0 1 1 0 1 .5.5 0 0 1 0-1zm-7 9a.5.5 0 1 1 0 1 .5.5 0 0 1 0-1zm7 0a.5.5 0 1 1 0 1 .5.5 0 0 1 0-1z"/></svg></button>
+      <button id="btn-copy" title="Copy (Ctrl+C)" disabled><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M4 4V1.5A.5.5 0 0 1 4.5 1h7a.5.5 0 0 1 .5.5v9a.5.5 0 0 1-.5.5H10v1.5a.5.5 0 0 1-.5.5h-7a.5.5 0 0 1-.5-.5v-9A.5.5 0 0 1 2.5 3H4zm1 0h6V2H5v2zM3 4h-.5v8h6v-1H4.5A.5.5 0 0 1 4 10.5V4H3z"/></svg></button>
+      <button id="btn-paste" title="Paste (Ctrl+V)" disabled><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M5 1a1 1 0 0 0-1 1H3a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V3a1 1 0 0 0-1-1h-1a1 1 0 0 0-1-1H5zm0 1h6v1H5V2zM3 4h10v9H3V4z"/></svg></button>
+      <button id="btn-delete-segment" title="Delete selection (Del)" class="danger" disabled><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M5 2V1h6v1h4v1h-1v10a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3H1V2h4zm1 3v7h1V5H6zm3 0v7h1V5H9zM3 3v10h10V3H3z"/></svg></button>
+    </div>
+    <div class="toolbar-separator"></div>
+    <!-- Transport -->
+    <div class="toolbar-group">
+      <button id="btn-play" title="Play (Space)" disabled><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M4 2l10 6-10 6V2z"/></svg></button>
+      <button id="btn-pause" title="Pause" disabled style="display:none"><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><rect x="3" y="2" width="4" height="12"/><rect x="9" y="2" width="4" height="12"/></svg></button>
+      <button id="btn-stop" title="Stop" disabled><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><rect x="3" y="3" width="10" height="10"/></svg></button>
+    </div>
+    <div class="toolbar-separator"></div>
+    <!-- Zoom -->
+    <div class="toolbar-group">
+      <button id="btn-zoom-in" title="Zoom In (Ctrl+=)" disabled><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M6.5 1a5.5 5.5 0 0 1 4.383 8.823l3.896 3.896-1.414 1.414-3.896-3.896A5.5 5.5 0 1 1 6.5 1zm0 2a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7zM5.5 5H7V3.5h1V5h1.5v1H8v1.5H7V6H5.5V5z"/></svg></button>
+      <button id="btn-zoom-out" title="Zoom Out (Ctrl+-)" disabled><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M6.5 1a5.5 5.5 0 0 1 4.383 8.823l3.896 3.896-1.414 1.414-3.896-3.896A5.5 5.5 0 1 1 6.5 1zm0 2a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7zM4.5 5h4v1h-4V5z"/></svg></button>
+      <button id="btn-zoom-fit" title="Fit (Ctrl+F)" disabled><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M2 2h4v1H3v3H2V2zm8 0h4v4h-1V3h-3V2zM2 10h1v3h3v1H2v-4zm11 0h1v4h-4v-1h3v-3z"/></svg></button>
+      <select id="view-mode" disabled>
+        <option value="waveform">Waveform</option>
+        <option value="spectrogram">Spectrogram</option>
+      </select>
+    </div>
+    <div class="toolbar-separator"></div>
+    <!-- Speed -->
+    <div class="toolbar-group">
+      <select id="speed-select" title="Playback speed">
+        <option value="0.5">0.5x</option>
+        <option value="0.75">0.75x</option>
+        <option value="1" selected>1x</option>
+        <option value="1.25">1.25x</option>
+        <option value="1.5">1.5x</option>
+        <option value="2">2x</option>
+      </select>
+    </div>
+    <div class="toolbar-separator"></div>
+    <!-- Snap & Theme -->
+    <div class="toolbar-group">
+      <label class="toolbar-checkbox" title="Snap to grid"><input type="checkbox" id="snap-toggle"><span>Snap</span></label>
+      <button id="btn-theme" title="Toggle dark/light mode"><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M6 1a7 7 0 1 0 8.062 6.5A5 5 0 0 1 6 1z"/></svg></button>
+    </div>
+    <div class="toolbar-spacer"></div>
+    <div class="toolbar-group">
+      <span id="toolbar-time" class="toolbar-info">--:--</span>
+    </div>
+  </div>
+
+  <div id="main-content">
+    <div id="timeline-row">
+      <div class="track-header timeline-header"></div>
+      <div class="track-canvas-container" id="timeline-container">
+        <canvas id="timeline-canvas"></canvas>
+      </div>
+    </div>
+
+    <div id="tracks-area">
+      <div id="track-row" class="track-row-item" style="flex:1;min-height:120px">
+        <div class="track-header" id="track-info">
+          <div class="track-name">Audio</div>
+          <div class="track-meta" id="track-meta"><span>--</span></div>
+          <div class="track-controls">
+            <div class="track-buttons">
+              <button class="track-btn" id="btn-mute" title="Mute (M)">M</button>
+              <button class="track-btn" id="btn-solo" title="Solo (S)">S</button>
+            </div>
+            <label class="track-slider-label">Vol<input type="range" id="volume-slider" min="0" max="1" step="0.01" value="1"></label>
+            <label class="track-slider-label">Pan<input type="range" id="pan-slider" min="-1" max="1" step="0.01" value="0"></label>
+          </div>
+        </div>
+        <div class="track-canvas-container" id="track-container">
+          <canvas id="waveform-canvas"></canvas>
+          <canvas id="spectrogram-canvas"></canvas>
+          <canvas id="selection-canvas"></canvas>
+          <canvas id="cursor-canvas"></canvas>
+          <canvas id="db-scale-canvas" class="axis-overlay axis-left"></canvas>
+          <canvas id="freq-scale-canvas" class="axis-overlay axis-left" style="display:none"></canvas>
+          <div id="drop-zone">
+            <div class="drop-zone-content">
+              <p>Drop audio file here or click <strong>Load</strong></p>
+              <p class="drop-hint">WAV, MP3, OGG, FLAC</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="label-row" class="track-row-item">
+        <div class="track-header" id="label-header">
+          <div class="track-name">Labels</div>
+          <div class="label-header-controls">
+            <input type="text" id="label-search" placeholder="Search..." class="label-search-input" />
+            <select id="label-category-filter" class="label-category-select">
+              <option value="">All</option>
+              <option value="speech">Speech</option>
+              <option value="noise">Noise</option>
+              <option value="music">Music</option>
+              <option value="silence">Silence</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+        </div>
+        <div class="track-canvas-container" id="label-container">
+          <canvas id="label-canvas"></canvas>
+          <input type="text" id="label-editor" class="label-editor" style="display:none" />
+        </div>
+      </div>
+    </div>
+
+    <div id="scrollbar-row">
+      <div class="track-header"></div>
+      <div id="scrollbar-container"><div id="scrollbar-track"><div id="scrollbar-thumb"></div></div></div>
+    </div>
+  </div>
+
+  <div id="status-bar">
+    <span id="status-rate">Rate: --</span><span class="status-sep">|</span>
+    <span id="status-channels">Ch: --</span><span class="status-sep">|</span>
+    <span id="status-duration">Dur: --</span><span class="status-sep">|</span>
+    <span id="status-selection">Sel: --</span><span class="status-sep">|</span>
+    <span id="status-cursor">Cur: --</span><span class="status-sep">|</span>
+    <span id="status-zoom">Zoom: --</span>
+  </div>
+
+  <!-- Hidden inputs -->
+  <input type="file" id="file-input" accept="audio/*" style="display:none">
+  <input type="file" id="add-track-input" accept="audio/*" style="display:none">
+  <input type="file" id="concat-input" accept="audio/*" style="display:none">
+  <input type="file" id="label-file-input" accept=".txt,.json,.srt,.vtt,.xml" style="display:none">
+  <input type="file" id="project-file-input" accept=".json" style="display:none">
+
+  <!-- Export labels dialog -->
+  <div id="export-dialog" class="dialog-overlay" style="display:none">
+    <div class="dialog">
+      <h3>Export Annotations</h3>
+      <div class="dialog-body">
+        <label><input type="radio" name="export-fmt" value="audacity" checked> Audacity .txt</label>
+        <label><input type="radio" name="export-fmt" value="json"> JSON</label>
+        <label><input type="radio" name="export-fmt" value="srt"> SRT (subtitles)</label>
+        <label><input type="radio" name="export-fmt" value="vtt"> WebVTT (captions)</label>
+        <label><input type="radio" name="export-fmt" value="elan"> ELAN XML</label>
+      </div>
+      <div class="dialog-actions">
+        <button id="export-cancel" class="btn-secondary">Cancel</button>
+        <button id="export-confirm" class="btn-primary">Export</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Export audio dialog -->
+  <div id="export-audio-dialog" class="dialog-overlay" style="display:none">
+    <div class="dialog">
+      <h3>Export Audio</h3>
+      <div class="dialog-body">
+        <p id="export-audio-range" style="font-size:12px;color:var(--text-dim);margin-bottom:8px"></p>
+        <label><input type="radio" name="export-audio-fmt" value="wav" checked> WAV (lossless)</label>
+        <label><input type="radio" name="export-audio-fmt" value="mp3"> MP3 (if supported)</label>
+        <div class="dialog-row" style="margin-top:8px">
+          <label style="font-size:12px">Sample rate:
+            <select id="export-sample-rate" style="padding:3px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px">
+              <option value="0">Original</option>
+              <option value="8000">8000 Hz</option>
+              <option value="16000">16000 Hz</option>
+              <option value="22050">22050 Hz</option>
+              <option value="44100">44100 Hz</option>
+              <option value="48000">48000 Hz</option>
+            </select>
+          </label>
+          <label style="font-size:12px;margin-left:12px"><input type="checkbox" id="export-mono"> Mono</label>
+        </div>
+      </div>
+      <div class="dialog-actions">
+        <button id="export-audio-cancel" class="btn-secondary">Cancel</button>
+        <button id="export-audio-confirm" class="btn-primary">Export</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Gain dialog -->
+  <div id="gain-dialog" class="dialog-overlay" style="display:none">
+    <div class="dialog">
+      <h3>Adjust Gain</h3>
+      <div class="dialog-body">
+        <label>Gain (dB): <input type="number" id="gain-db-input" value="0" step="0.5" style="width:80px;padding:4px 8px;border:1px solid var(--border);border-radius:4px;font-size:13px"></label>
+      </div>
+      <div class="dialog-actions">
+        <button id="gain-cancel" class="btn-secondary">Cancel</button>
+        <button id="gain-confirm" class="btn-primary">Apply</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mixdown dialog -->
+  <div id="mixdown-dialog" class="dialog-overlay" style="display:none">
+    <div class="dialog">
+      <h3>Mix Down &amp; Export</h3>
+      <div class="dialog-body">
+        <p style="font-size:12px;color:var(--text-dim)">Mix all unmuted tracks and export as a single audio file.</p>
+        <label><input type="radio" name="mixdown-fmt" value="wav" checked> WAV</label>
+      </div>
+      <div class="dialog-actions">
+        <button id="mixdown-cancel" class="btn-secondary">Cancel</button>
+        <button id="mixdown-confirm" class="btn-primary">Export</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Fade dialog -->
+  <div id="fade-dialog" class="dialog-overlay" style="display:none">
+    <div class="dialog">
+      <h3 id="fade-dialog-title">Fade In</h3>
+      <div class="dialog-body">
+        <label>Curve type:</label>
+        <label><input type="radio" name="fade-curve" value="linear" checked> Linear</label>
+        <label><input type="radio" name="fade-curve" value="exponential"> Exponential</label>
+        <label><input type="radio" name="fade-curve" value="sCurve"> S-Curve</label>
+      </div>
+      <div class="dialog-actions">
+        <button id="fade-cancel" class="btn-secondary">Cancel</button>
+        <button id="fade-confirm" class="btn-primary">Apply</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- EQ dialog -->
+  <div id="eq-dialog" class="dialog-overlay" style="display:none">
+    <div class="dialog" style="min-width:500px">
+      <h3>Parametric EQ</h3>
+      <div class="dialog-body">
+        <canvas id="eq-canvas" width="460" height="180" style="width:460px;height:180px;border:1px solid var(--border);border-radius:6px;margin-bottom:8px;background:var(--bg-canvas)"></canvas>
+        <div id="eq-bands"></div>
+      </div>
+      <div class="dialog-actions">
+        <button id="eq-cancel" class="btn-secondary">Cancel</button>
+        <button id="eq-confirm" class="btn-primary">Apply</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Compressor dialog -->
+  <div id="compressor-dialog" class="dialog-overlay" style="display:none">
+    <div class="dialog" style="min-width:380px">
+      <h3>Compressor / Limiter</h3>
+      <div class="dialog-body">
+        <div class="dialog-slider-row"><label>Threshold: <span id="comp-threshold-val">-20</span> dB</label><input type="range" id="comp-threshold" min="-60" max="0" value="-20" step="1"></div>
+        <div class="dialog-slider-row"><label>Ratio: <span id="comp-ratio-val">4</span>:1</label><input type="range" id="comp-ratio" min="1" max="20" value="4" step="0.5"></div>
+        <div class="dialog-slider-row"><label>Attack: <span id="comp-attack-val">10</span> ms</label><input type="range" id="comp-attack" min="0.1" max="100" value="10" step="0.1"></div>
+        <div class="dialog-slider-row"><label>Release: <span id="comp-release-val">100</span> ms</label><input type="range" id="comp-release" min="10" max="1000" value="100" step="1"></div>
+        <div class="dialog-slider-row"><label>Knee: <span id="comp-knee-val">6</span> dB</label><input type="range" id="comp-knee" min="0" max="20" value="6" step="1"></div>
+        <div class="dialog-slider-row"><label>Makeup: <span id="comp-makeup-val">0</span> dB</label><input type="range" id="comp-makeup" min="0" max="30" value="0" step="0.5"></div>
+      </div>
+      <div class="dialog-actions">
+        <button id="compressor-cancel" class="btn-secondary">Cancel</button>
+        <button id="compressor-confirm" class="btn-primary">Apply</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Reverb dialog -->
+  <div id="reverb-dialog" class="dialog-overlay" style="display:none">
+    <div class="dialog">
+      <h3>Reverb</h3>
+      <div class="dialog-body">
+        <div class="dialog-slider-row"><label>Room Size: <span id="reverb-room-val">0.5</span></label><input type="range" id="reverb-room" min="0" max="1" value="0.5" step="0.01"></div>
+        <div class="dialog-slider-row"><label>Damping: <span id="reverb-damp-val">0.5</span></label><input type="range" id="reverb-damp" min="0" max="1" value="0.5" step="0.01"></div>
+        <div class="dialog-slider-row"><label>Wet/Dry: <span id="reverb-mix-val">0.3</span></label><input type="range" id="reverb-mix" min="0" max="1" value="0.3" step="0.01"></div>
+      </div>
+      <div class="dialog-actions">
+        <button id="reverb-cancel" class="btn-secondary">Cancel</button>
+        <button id="reverb-confirm" class="btn-primary">Apply</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Noise Reduction dialog (non-modal so user can change selection) -->
+  <div id="noise-dialog" class="dialog-floating" style="display:none">
+    <div class="dialog">
+      <h3>Noise Reduction</h3>
+      <div class="dialog-body">
+        <p style="font-size:12px;color:var(--text-dim);margin-bottom:8px">Step 1: Select a noise-only region and click "Get Noise Profile".<br>Step 2: Select the region to clean and click "Apply".</p>
+        <button id="noise-profile-btn" class="btn-secondary" style="margin-bottom:8px">Get Noise Profile</button>
+        <span id="noise-profile-status" style="font-size:11px;color:var(--text-dim)">No profile</span>
+        <div class="dialog-slider-row" style="margin-top:8px"><label>Sensitivity: <span id="noise-sens-val">2</span></label><input type="range" id="noise-sensitivity" min="0.5" max="5" value="2" step="0.1"></div>
+      </div>
+      <div class="dialog-actions">
+        <button id="noise-cancel" class="btn-secondary">Cancel</button>
+        <button id="noise-confirm" class="btn-primary">Apply</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Speed/Pitch dialog -->
+  <div id="speed-dialog" class="dialog-overlay" style="display:none">
+    <div class="dialog">
+      <h3>Speed / Pitch Change</h3>
+      <div class="dialog-body">
+        <p style="font-size:12px;color:var(--text-dim);margin-bottom:8px">Changing speed will also change pitch (resampling).</p>
+        <div class="dialog-slider-row"><label>Speed: <span id="speed-ratio-val">1.0</span>x</label><input type="range" id="speed-ratio" min="0.25" max="4" value="1" step="0.05"></div>
+      </div>
+      <div class="dialog-actions">
+        <button id="speed-cancel" class="btn-secondary">Cancel</button>
+        <button id="speed-confirm" class="btn-primary">Apply</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Saturation dialog -->
+  <div id="saturation-dialog" class="dialog-overlay" style="display:none">
+    <div class="dialog">
+      <h3>Saturation</h3>
+      <div class="dialog-body">
+        <div class="dialog-slider-row"><label>Drive: <span id="sat-drive-val">2</span></label><input type="range" id="sat-drive" min="1" max="10" value="2" step="0.1"></div>
+      </div>
+      <div class="dialog-actions">
+        <button id="saturation-cancel" class="btn-secondary">Cancel</button>
+        <button id="saturation-confirm" class="btn-primary">Apply</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Resample dialog -->
+  <div id="resample-dialog" class="dialog-overlay" style="display:none">
+    <div class="dialog">
+      <h3>Resample Track</h3>
+      <div class="dialog-body">
+        <label>New sample rate:
+          <select id="resample-rate" style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;font-size:13px">
+            <option value="8000">8000 Hz</option>
+            <option value="16000">16000 Hz</option>
+            <option value="22050">22050 Hz</option>
+            <option value="44100" selected>44100 Hz</option>
+            <option value="48000">48000 Hz</option>
+          </select>
+        </label>
+      </div>
+      <div class="dialog-actions">
+        <button id="resample-cancel" class="btn-secondary">Cancel</button>
+        <button id="resample-confirm" class="btn-primary">Apply</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Keyboard shortcuts dialog -->
+  <div id="shortcuts-dialog" class="dialog-overlay" style="display:none">
+    <div class="dialog" style="min-width:420px;max-height:80vh;overflow-y:auto">
+      <h3>Keyboard Shortcuts</h3>
+      <div class="dialog-body shortcuts-list">
+        <div class="shortcut-row"><span class="shortcut-key">Space</span><span>Play / Pause</span></div>
+        <div class="shortcut-row"><span class="shortcut-key">Ctrl+O</span><span>Open audio file</span></div>
+        <div class="shortcut-row"><span class="shortcut-key">Ctrl+S</span><span>Save project</span></div>
+        <div class="shortcut-row"><span class="shortcut-key">Ctrl+Z</span><span>Undo</span></div>
+        <div class="shortcut-row"><span class="shortcut-key">Ctrl+Shift+Z</span><span>Redo</span></div>
+        <div class="shortcut-row"><span class="shortcut-key">Ctrl+X</span><span>Cut selection</span></div>
+        <div class="shortcut-row"><span class="shortcut-key">Ctrl+C</span><span>Copy selection</span></div>
+        <div class="shortcut-row"><span class="shortcut-key">Ctrl+V</span><span>Paste at cursor</span></div>
+        <div class="shortcut-row"><span class="shortcut-key">Ctrl+D</span><span>Duplicate selection</span></div>
+        <div class="shortcut-row"><span class="shortcut-key">Ctrl+A</span><span>Select all</span></div>
+        <div class="shortcut-row"><span class="shortcut-key">Ctrl+B</span><span>Add label</span></div>
+        <div class="shortcut-row"><span class="shortcut-key">Delete</span><span>Delete selection / label</span></div>
+        <div class="shortcut-row"><span class="shortcut-key">Ctrl+=</span><span>Zoom in</span></div>
+        <div class="shortcut-row"><span class="shortcut-key">Ctrl+-</span><span>Zoom out</span></div>
+        <div class="shortcut-row"><span class="shortcut-key">Ctrl+F</span><span>Zoom to fit</span></div>
+        <div class="shortcut-row"><span class="shortcut-key">Home</span><span>Go to start</span></div>
+        <div class="shortcut-row"><span class="shortcut-key">End</span><span>Go to end</span></div>
+        <div class="shortcut-row"><span class="shortcut-key">M</span><span>Toggle mute</span></div>
+        <div class="shortcut-row"><span class="shortcut-key">Esc</span><span>Deselect / Close</span></div>
+      </div>
+      <div class="dialog-actions">
+        <button id="shortcuts-close" class="btn-primary">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- About dialog -->
+  <div id="about-dialog" class="dialog-overlay" style="display:none">
+    <div class="dialog" style="text-align:center">
+      <h3>About Annota</h3>
+      <div class="dialog-body" style="align-items:center">
+        <p style="font-size:24px;font-weight:700;color:var(--accent);margin-bottom:4px">Annota</p>
+        <p style="font-size:12px;color:var(--text-dim)">Web Audio Editor</p>
+        <p style="font-size:11px;color:var(--text-dim);margin-top:8px">TypeScript &middot; Vite &middot; Web Audio API</p>
+      </div>
+      <div class="dialog-actions" style="justify-content:center">
+        <button id="about-close" class="btn-primary">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="/src/app/app.ts"></script>
+</body>
+</html>
