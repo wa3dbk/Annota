@@ -16,9 +16,6 @@ npm run dev
 
 Then open **http://localhost:5173** in your browser. That's it.
 
-> **Why can't I just open index.html?**
-> The app uses ES modules and Web Workers which browsers block when opened as local files (`file://` protocol). You need an HTTP server -- `npm run dev` handles that for you.
-
 ### Production Build
 
 ```bash
@@ -214,17 +211,11 @@ Requires: Web Audio API, Canvas API, IndexedDB, ES2020+.
 - **Large files**: The mipmap peak cache ensures smooth scrolling/zooming even for multi-hour recordings. Peak computation runs once after loading.
 - **Spectrogram**: Computed in a Web Worker to avoid blocking the UI.
 - **Memory**: Undo history stores full buffer snapshots. With a 30-entry limit and large files, memory usage can be significant.
-- **Build size**: ~120 KB JS + ~15 KB CSS (gzipped: ~32 KB + ~3 KB).
+
 
 ## Documentation
 
-Full documentation is available as a LaTeX document in `docs/documentation.tex`. To compile:
-
-```bash
-cd docs
-pdflatex documentation.tex
-pdflatex documentation.tex  # second pass for TOC
-```
+Full documentation is available as a PDF in `docs/documentation.pdf`
 
 ## License
 
