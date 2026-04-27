@@ -126,6 +126,23 @@ export interface DOMRefs {
   aboutClose: HTMLButtonElement;
 
   menuBarContainer: HTMLElement;
+
+  videoPanel: HTMLElement;
+  videoPanelClose: HTMLButtonElement;
+  videoPanelModeBtn: HTMLButtonElement;
+  videoElement: HTMLVideoElement;
+
+  urlDialog: HTMLElement;
+  urlInput: HTMLInputElement;
+  urlError: HTMLElement;
+  urlCancel: HTMLButtonElement;
+  urlConfirm: HTMLButtonElement;
+
+  youtubeDialog: HTMLElement;
+  youtubeInput: HTMLInputElement;
+  youtubeError: HTMLElement;
+  youtubeCancel: HTMLButtonElement;
+  youtubeConfirm: HTMLButtonElement;
 }
 
 export function getDOMRefs(): DOMRefs {
@@ -253,5 +270,22 @@ export function getDOMRefs(): DOMRefs {
     aboutClose: $('#about-close') as HTMLButtonElement,
 
     menuBarContainer: $('#menu-bar-container') as HTMLElement,
+
+    videoPanel: $('#video-panel') as HTMLElement,
+    videoPanelClose: $('#video-panel-close') as HTMLButtonElement,
+    videoPanelModeBtn: $('#video-panel-mode') as HTMLButtonElement,
+    videoElement: $('#video-element') as HTMLVideoElement,
+
+    urlDialog: $('#url-dialog') as HTMLElement,
+    urlInput: $('#url-input') as HTMLInputElement,
+    urlError: $('#url-error') as HTMLElement,
+    urlCancel: $('#url-cancel') as HTMLButtonElement,
+    urlConfirm: $('#url-confirm') as HTMLButtonElement,
+
+    youtubeDialog: $('#youtube-dialog') as HTMLElement,
+    youtubeInput: $('#youtube-input') as HTMLInputElement,
+    youtubeError: $('#youtube-error') as HTMLElement,
+    youtubeCancel: $('#youtube-cancel') as HTMLButtonElement,
+    youtubeConfirm: $('#youtube-confirm') as HTMLButtonElement,
   };
 }

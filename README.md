@@ -1,6 +1,6 @@
 # Annota - Web Audio Editor
 
-A fully client-side, browser-based audio editor inspired by Audacity. Built with TypeScript and bundled with Vite. No backend, no server-side processing -- all audio editing happens in your browser.
+A fully client-side, browser-based audio and video annotation tool inspired by Audacity. Built with TypeScript and bundled with Vite. No backend, no server-side processing -- all audio editing happens in your browser. Supports local audio/video files, remote URLs, and YouTube videos.
 
 ## Quick Start
 
@@ -36,10 +36,13 @@ npm run typecheck
 
 ## Features
 
-### Core Audio Editing
+### Core Audio & Video Loading
 - **Load audio files**: WAV, MP3, OGG, FLAC, M4A, AAC, WebM via file picker or drag-and-drop
+- **Load video files**: MP4, WebM — audio track is extracted for waveform display, video shown in a floating or inline preview panel
+- **Load from URL**: Fetch audio or video from a remote URL with download progress reporting
+- **YouTube integration**: Load YouTube videos for annotation (supports `youtube.com/watch?v=`, `youtu.be/`, `youtube.com/shorts/`, bare video IDs, and URLs with playlist parameters)
 - **Playback controls**: Play, Pause, Stop with spacebar shortcut
-- **Playback speed**: 0.5x, 0.75x, 1x, 1.25x, 1.5x, 2x
+- **Playback speed**: 0.5x, 0.75x, 1x, 1.25x, 1.5x, 2x (also synced to video and YouTube player)
 - **Time selection**: Click and drag to select audio regions
 - **Cut / Copy / Paste / Duplicate / Delete**: Full clipboard operations on audio segments
 - **Export audio**: Export selection or full file as WAV or MP3, with optional resampling and mono mixdown
@@ -49,6 +52,7 @@ npm run typecheck
 ### Visualization
 - **Waveform view**: Peak-cached rendering with hierarchical mipmap for instant zoom
 - **Spectrogram view**: STFT-based frequency display with magma colormap
+- **Video preview**: Floating draggable panel or inline display for video files and YouTube
 - **dB scale overlay**: Amplitude scale on the left edge in waveform mode
 - **Frequency scale overlay**: Hz scale on the left edge in spectrogram mode
 - **Time ruler**: Adaptive tick marks with time labels
@@ -100,7 +104,7 @@ npm run typecheck
 
 | Menu | Items |
 |------|-------|
-| File | New Project, Open Project, Save Project, Load Audio, Add Audio Track, Append Audio, Export Audio, Export Labels, Import Labels |
+| File | New Project, Open Project, Save Project, Import Audio, Load from URL, Load YouTube Video, Import Labels, Export Audio, Export Labels, Export Mixdown, Export Waveform Image |
 | Edit | Undo, Redo, Cut, Copy, Paste, Duplicate, Delete, Select All |
 | Tracks | Add Audio Track, Split Channels, Mixdown Export |
 | Effects | Fade In/Out, Normalize, Gain, EQ, Compressor, Reverb, Noise Reduction, Speed/Pitch, Saturation, Resample |
@@ -112,7 +116,7 @@ npm run typecheck
 | Shortcut | Action |
 |----------|--------|
 | Space | Play / Pause |
-| Ctrl+O | Load file |
+| Ctrl+O | Load file (audio or video) |
 | Ctrl+S | Save project |
 | Ctrl+Z | Undo |
 | Ctrl+Shift+Z / Ctrl+Y | Redo |
@@ -125,6 +129,8 @@ npm run typecheck
 | Ctrl+= | Zoom in |
 | Ctrl+- | Zoom out |
 | Ctrl+F | Fit to view |
+| Ctrl+U | Load from URL |
+| V | Toggle video preview (floating / inline / hidden) |
 | M | Toggle mute on main track |
 | Delete | Delete selected audio or label |
 | Home / End | Jump to start / end |
@@ -150,7 +156,7 @@ Annota/
     ├── fft.ts              # Radix-2 Cooley-Tukey FFT + window functions
     ├── viewport.ts         # Zoom/scroll state, coordinate transforms
     ├── undo.ts             # Undo/redo stack with AudioBuffer snapshots
-    ├── audio-engine.ts     # Web Audio API: decode, play, edit, encode WAV
+    ├── audio-engine.ts     # Web Audio API: decode, play, edit, encode WAV, load from ArrayBuffer
     ├── waveform.ts         # Mipmap peak cache + theme-aware rendering
     ├── spectrogram.ts      # STFT computation + rendering
     ├── timeline.ts         # Time ruler with adaptive ticks
@@ -204,11 +210,12 @@ Tested on:
 - Safari 15+
 - Edge 90+
 
-Requires: Web Audio API, Canvas API, IndexedDB, ES2020+.
+Requires: Web Audio API, Canvas API, IndexedDB, ES2020+. YouTube integration requires internet access for the YouTube IFrame Player API.
 
 ## Performance Notes
 
 - **Large files**: The mipmap peak cache ensures smooth scrolling/zooming even for multi-hour recordings. Peak computation runs once after loading.
+- **URL loading**: Large files fetched from URLs show streaming download progress (MB downloaded / total MB) before decoding begins.
 - **Spectrogram**: Computed in a Web Worker to avoid blocking the UI.
 - **Memory**: Undo history stores full buffer snapshots. With a 30-entry limit and large files, memory usage can be significant.
 

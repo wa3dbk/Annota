@@ -66,6 +66,30 @@ export class LabelTrack {
   }
 
   addPointLabel(time: number, text: string = ''): Label {
+    // Create a region label with a minimum 1-second duration instead of a zero-length point
+    const minDuration = 1.0;
+    const totalDuration = this.viewport.duration;
+    let end = time + minDuration;
+
+    // Clamp to total duration
+    if (end > totalDuration) {
+      end = totalDuration;
+    }
+
+    // Clamp to avoid overlapping with the next label
+    const sorted = this.labels
+      .filter(l => l.start > time)
+      .sort((a, b) => a.start - b.start);
+    if (sorted.length > 0 && sorted[0].start < end) {
+      end = sorted[0].start;
+    }
+
+    // If we still have a valid region (end > start), create a region label
+    if (end - time >= 0.01) {
+      return this.addRegionLabel(time, end, text || `Label ${this.labels.length + 1}`);
+    }
+
+    // Fallback: true point label if no room at all
     const label: Label = {
       id: uniqueId('lbl'),
       start: time,

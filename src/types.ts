@@ -113,6 +113,9 @@ export type FadeCurve = 'linear' | 'exponential' | 'sCurve';
 // View mode
 export type ViewMode = 'waveform' | 'spectrogram';
 
+// Video display mode
+export type VideoDisplayMode = 'floating' | 'inline' | 'hidden';
+
 // Worker message types (inbound to worker)
 export interface WorkerSTFTMessage {
   type: 'computeSTFT';

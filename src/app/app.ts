@@ -28,7 +28,7 @@ import { ThemeManager } from '../ui/theme';
 import { AnalysisPanel } from '../ui/analysis-panel';
 import { getDOMRefs } from './dom-refs';
 import type { DOMRefs } from './dom-refs';
-import type { EQBand, ViewMode, Label, MenuItem } from '../types';
+import type { EQBand, ViewMode, Label, MenuItem, VideoDisplayMode } from '../types';
 
 // ===== DOM Elements =====
 const dom = getDOMRefs();
@@ -78,6 +78,13 @@ let mainTrackSolo = false;
 let _fadeType: string = 'in';
 let _noiseProfile: Float32Array | null = null;
 let _eqBands: EQBand[] = ParametricEQ.defaultBands();
+
+// Video state
+let videoDisplayMode: VideoDisplayMode = 'floating';
+let hasVideoSource: boolean = false;
+let isYouTubeMode: boolean = false;
+let youtubePlayer: any = null;
+let youtubeApiLoaded: boolean = false;
 
 // ===== Theme Integration =====
 function applyThemeColors(): void {
@@ -230,8 +237,19 @@ function drawAxisOverlays(): void {
 function startAnimLoop(): void {
   if (animFrameId) return;
   const tick = () => {
+    if (isYouTubeMode) {
+      // YouTube mode: YouTube player is the source of truth for time
+      ytAnimTick();
+      return;
+    }
     if (audioEngine.isPlaying) {
       const t = audioEngine.currentTime;
+      // Sync video playback
+      if (hasVideoSource && dom.videoElement.readyState >= 2) {
+        const drift = Math.abs(dom.videoElement.currentTime - t);
+        if (drift > 0.15) dom.videoElement.currentTime = t;
+        if (dom.videoElement.paused) dom.videoElement.play().catch(() => {});
+      }
       selectionManager.setCursor(t);
       selectionManager.drawCursor();
       updateToolbarTime(t);
@@ -255,11 +273,68 @@ function startAnimLoop(): void {
   animFrameId = requestAnimationFrame(tick);
 }
 
+// YouTube-specific animation loop: polls the YT player for current time
+let ytAnimId: number | null = null;
+
+function startYouTubeAnimLoop(): void {
+  if (ytAnimId) return;
+  ytAnimTick();
+}
+
+function stopYouTubeAnimLoop(): void {
+  if (ytAnimId) {
+    cancelAnimationFrame(ytAnimId);
+    ytAnimId = null;
+  }
+}
+
+function ytAnimTick(): void {
+  if (!isYouTubeMode || !youtubePlayer || !youtubePlayer.getPlayerState) {
+    ytAnimId = null;
+    return;
+  }
+  const state = youtubePlayer.getPlayerState();
+  // YT.PlayerState: PLAYING=1, PAUSED=2, BUFFERING=3, ENDED=0
+  const isPlaying = state === 1 || state === 3;
+
+  const t = youtubePlayer.getCurrentTime() || 0;
+  selectionManager.setCursor(t);
+  selectionManager.drawCursor();
+  updateToolbarTime(t);
+
+  if (isPlaying) {
+    viewport.scrollToTime(t);
+  }
+
+  timeRuler.draw();
+  if (viewMode === 'waveform') waveformRenderer.draw();
+  else spectrogramRenderer.draw();
+  selectionManager.drawSelection();
+  labelTrack.draw();
+  updateScrollbar();
+  updateStatusBar();
+
+  // Update play/pause button state to reflect YT player
+  if (isPlaying) {
+    dom.btnPlay.style.display = 'none';
+    dom.btnPause.style.display = '';
+    dom.btnPause.disabled = false;
+  } else {
+    dom.btnPlay.style.display = '';
+    dom.btnPause.style.display = 'none';
+    dom.btnPlay.disabled = false;
+  }
+
+  // Keep looping as long as we're in YouTube mode
+  ytAnimId = requestAnimationFrame(ytAnimTick);
+}
+
 function stopAnimLoop(): void {
   if (animFrameId) {
     cancelAnimationFrame(animFrameId);
     animFrameId = null;
   }
+  stopYouTubeAnimLoop();
 }
 
 // ===== UI Updates =====
@@ -381,6 +456,8 @@ undoManager.onChange(() => updateUndoButtons());
 async function loadAudioFile(file: File): Promise<void> {
   showLoading('Decoding audio...');
   dom.dropZone.classList.add('hidden');
+  cleanupYouTubePlayer();
+  cleanupVideoSource();
 
   try {
     await audioEngine.loadFile(file);
@@ -420,6 +497,349 @@ async function computeSpectrogram(): Promise<void> {
   if (viewMode === 'spectrogram') {
     spectrogramRenderer.draw();
   }
+}
+
+// ===== Video / URL / YouTube Loading =====
+
+function cleanupVideoSource(): void {
+  dom.videoElement.src = '';
+  dom.videoElement.load();
+  hasVideoSource = false;
+  hideVideoPanel();
+}
+
+function cleanupYouTubePlayer(): void {
+  stopYouTubeAnimLoop();
+  if (youtubePlayer) {
+    try { youtubePlayer.destroy(); } catch (_) { /* ignore */ }
+    youtubePlayer = null;
+  }
+  isYouTubeMode = false;
+  const ytDiv = document.getElementById('yt-player-div');
+  if (ytDiv) ytDiv.remove();
+  dom.videoElement.style.display = '';
+}
+
+async function loadVideoFile(file: File): Promise<void> {
+  showLoading('Loading video...');
+  dom.dropZone.classList.add('hidden');
+  cleanupYouTubePlayer();
+
+  try {
+    const objectUrl = URL.createObjectURL(file);
+    dom.videoElement.src = objectUrl;
+
+    const arrayBuffer = await file.arrayBuffer();
+    await audioEngine.loadArrayBuffer(arrayBuffer);
+
+    hasVideoSource = true;
+    isYouTubeMode = false;
+    onBufferReady();
+    hideLoading();
+    showVideoPanel();
+    await computeSpectrogram();
+  } catch (err: any) {
+    hideLoading();
+    dom.dropZone.classList.remove('hidden');
+    console.error('Failed to load video:', err);
+    alert('Failed to load video file: ' + err.message);
+  }
+}
+
+async function loadFromURL(url: string): Promise<void> {
+  showLoading('Fetching from URL...');
+  dom.dropZone.classList.add('hidden');
+  cleanupYouTubePlayer();
+  cleanupVideoSource();
+
+  try {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+
+    const contentType = response.headers.get('content-type') || '';
+    const isVideo = contentType.startsWith('video/') || /\.(mp4|webm|ogv|mov)(\?|$)/i.test(url);
+
+    // Stream download with progress reporting
+    const contentLength = parseInt(response.headers.get('content-length') || '0', 10);
+    let arrayBuffer: ArrayBuffer;
+
+    if (contentLength > 0 && response.body) {
+      const reader = response.body.getReader();
+      const chunks: Uint8Array[] = [];
+      let received = 0;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        received += value.length;
+        const pct = Math.round((received / contentLength) * 100);
+        const sizeMB = (received / 1048576).toFixed(1);
+        const totalMB = (contentLength / 1048576).toFixed(1);
+        const el = dom.trackContainer.querySelector('.loading-text');
+        if (el) el.textContent = `Downloading... ${pct}% (${sizeMB} / ${totalMB} MB)`;
+      }
+
+      const combined = new Uint8Array(received);
+      let offset = 0;
+      for (const chunk of chunks) {
+        combined.set(chunk, offset);
+        offset += chunk.length;
+      }
+      arrayBuffer = combined.buffer;
+    } else {
+      arrayBuffer = await response.arrayBuffer();
+    }
+
+    showLoading('Decoding audio...');
+
+    if (isVideo) {
+      const blob = new Blob([arrayBuffer], { type: contentType || 'video/mp4' });
+      dom.videoElement.src = URL.createObjectURL(blob);
+      hasVideoSource = true;
+    }
+
+    await audioEngine.loadArrayBuffer(arrayBuffer);
+    onBufferReady();
+    hideLoading();
+
+    if (isVideo) showVideoPanel();
+    await computeSpectrogram();
+  } catch (err: any) {
+    hideLoading();
+    dom.dropZone.classList.remove('hidden');
+    console.error('Failed to load from URL:', err);
+
+    if (err.message.includes('Failed to fetch') || err.name === 'TypeError') {
+      alert('Failed to load from URL. This may be due to CORS restrictions on the remote server.');
+    } else {
+      alert('Failed to load from URL: ' + err.message);
+    }
+  }
+}
+
+// ===== Video Panel Management =====
+
+function showVideoPanel(): void {
+  if (videoDisplayMode === 'floating' || videoDisplayMode === 'hidden') {
+    videoDisplayMode = 'floating';
+    dom.videoPanel.style.display = 'flex';
+    removeVideoInline();
+  } else if (videoDisplayMode === 'inline') {
+    dom.videoPanel.style.display = 'none';
+    showVideoInline();
+  }
+}
+
+function hideVideoPanel(): void {
+  dom.videoPanel.style.display = 'none';
+  removeVideoInline();
+}
+
+function toggleVideoDisplayMode(): void {
+  if (videoDisplayMode === 'floating') {
+    videoDisplayMode = 'inline';
+    dom.videoPanel.style.display = 'none';
+    showVideoInline();
+  } else if (videoDisplayMode === 'inline') {
+    videoDisplayMode = 'hidden';
+    removeVideoInline();
+  } else {
+    videoDisplayMode = 'floating';
+    if (hasVideoSource || isYouTubeMode) {
+      dom.videoPanel.style.display = 'flex';
+    }
+  }
+}
+
+function showVideoInline(): void {
+  removeVideoInline();
+  const inlineContainer = document.createElement('div');
+  inlineContainer.className = 'video-inline-container';
+  inlineContainer.id = 'video-inline';
+  if (isYouTubeMode) {
+    const ytDiv = document.getElementById('yt-player-div');
+    if (ytDiv) inlineContainer.appendChild(ytDiv);
+  } else {
+    inlineContainer.appendChild(dom.videoElement);
+  }
+  const trackRow = document.getElementById('track-row')!;
+  trackRow.parentElement!.insertBefore(inlineContainer, trackRow);
+}
+
+function removeVideoInline(): void {
+  const inline = document.getElementById('video-inline');
+  if (inline) {
+    const panelBody = dom.videoPanel.querySelector('.video-panel-body')!;
+    if (isYouTubeMode) {
+      const ytDiv = document.getElementById('yt-player-div');
+      if (ytDiv) panelBody.appendChild(ytDiv);
+    } else {
+      panelBody.appendChild(dom.videoElement);
+    }
+    inline.remove();
+  }
+}
+
+function makeVideoPanelDraggable(): void {
+  const header = dom.videoPanel.querySelector('.video-panel-header') as HTMLElement;
+  let dragging = false;
+  let startX = 0, startY = 0, origLeft = 0, origTop = 0;
+
+  header.addEventListener('mousedown', (e: MouseEvent) => {
+    if ((e.target as HTMLElement).tagName === 'BUTTON') return;
+    dragging = true;
+    startX = e.clientX;
+    startY = e.clientY;
+    const rect = dom.videoPanel.getBoundingClientRect();
+    origLeft = rect.left;
+    origTop = rect.top;
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', (e: MouseEvent) => {
+    if (!dragging) return;
+    dom.videoPanel.style.left = (origLeft + (e.clientX - startX)) + 'px';
+    dom.videoPanel.style.top = (origTop + (e.clientY - startY)) + 'px';
+    dom.videoPanel.style.right = 'auto';
+  });
+
+  document.addEventListener('mouseup', () => { dragging = false; });
+}
+
+// ===== YouTube Integration =====
+
+function loadYouTubeApi(): Promise<void> {
+  if (youtubeApiLoaded) return Promise.resolve();
+  return new Promise((resolve) => {
+    const tag = document.createElement('script');
+    tag.src = 'https://www.youtube.com/iframe_api';
+    document.head.appendChild(tag);
+    (window as any).onYouTubeIframeAPIReady = () => {
+      youtubeApiLoaded = true;
+      resolve();
+    };
+  });
+}
+
+function extractYouTubeId(input: string): string | null {
+  input = input.trim();
+  const patterns = [
+    // https://www.youtube.com/watch?v=ID  or  ?v=ID&list=...&...
+    /(?:youtube\.com\/watch\?.*?v=)([a-zA-Z0-9_-]{11})/,
+    // https://www.youtube.com/shorts/ID
+    /youtube\.com\/shorts\/([a-zA-Z0-9_-]{11})/,
+    // https://youtu.be/ID
+    /youtu\.be\/([a-zA-Z0-9_-]{11})/,
+    // https://www.youtube.com/embed/ID
+    /youtube\.com\/embed\/([a-zA-Z0-9_-]{11})/,
+    // bare 11-char ID
+    /^([a-zA-Z0-9_-]{11})$/
+  ];
+  for (const re of patterns) {
+    const m = input.match(re);
+    if (m) return m[1];
+  }
+  return null;
+}
+
+async function loadYouTubeVideo(videoId: string): Promise<void> {
+  showLoading('Loading YouTube video...');
+  dom.dropZone.classList.add('hidden');
+  cleanupYouTubePlayer();
+  cleanupVideoSource();
+
+  try {
+    await loadYouTubeApi();
+
+    const panelBody = dom.videoPanel.querySelector('.video-panel-body')!;
+    dom.videoElement.style.display = 'none';
+
+    let playerDiv = document.getElementById('yt-player-div');
+    if (!playerDiv) {
+      playerDiv = document.createElement('div');
+      playerDiv.id = 'yt-player-div';
+      panelBody.appendChild(playerDiv);
+    }
+
+    youtubePlayer = new (window as any).YT.Player('yt-player-div', {
+      videoId: videoId,
+      width: '100%',
+      height: 270,
+      playerVars: {
+        autoplay: 0,
+        controls: 1,
+        modestbranding: 1,
+        rel: 0
+      },
+      events: {
+        onReady: () => {
+          isYouTubeMode = true;
+          hasVideoSource = false;
+          hideLoading();
+          showVideoPanel();
+
+          let duration = youtubePlayer.getDuration();
+          if (duration > 0) {
+            setupYouTubeTimeline(duration);
+          } else {
+            // Duration not available yet — poll until it is
+            const pollDur = setInterval(() => {
+              duration = youtubePlayer.getDuration();
+              if (duration > 0) {
+                clearInterval(pollDur);
+                setupYouTubeTimeline(duration);
+              }
+            }, 500);
+          }
+          // Start the YouTube animation loop immediately so cursor tracks
+          startYouTubeAnimLoop();
+        },
+        onStateChange: (event: any) => {
+          // Keep our UI in sync when user interacts with YT player directly
+          // YT.PlayerState: PLAYING=1, PAUSED=2, BUFFERING=3, ENDED=0, UNSTARTED=-1
+          const state = event.data;
+          if (state === 1) {
+            // User started playing via YT controls
+            startYouTubeAnimLoop();
+          }
+          if (state === 0) {
+            // Video ended
+            selectionManager.setCursor(youtubePlayer.getDuration() || 0);
+            redrawAll();
+          }
+        },
+        onError: (event: any) => {
+          hideLoading();
+          dom.dropZone.classList.remove('hidden');
+          alert('Failed to load YouTube video. Error code: ' + event.data);
+        }
+      }
+    });
+  } catch (err: any) {
+    hideLoading();
+    dom.dropZone.classList.remove('hidden');
+    alert('Failed to load YouTube API: ' + err.message);
+  }
+}
+
+function setupYouTubeTimeline(duration: number): void {
+  audioEngine._ensureContext();
+  const sr = 44100;
+  const length = Math.ceil(duration * sr);
+  const silentBuffer = audioEngine.audioContext!.createBuffer(1, length, sr);
+  audioEngine.audioBuffer = silentBuffer;
+  audioEngine.originalBuffer = audioEngine._cloneBuffer(silentBuffer);
+
+  viewport.setAudioParams(sr, length);
+  viewport.zoomFit();
+  waveformRenderer.clearCache();
+  waveformRenderer.buildMipmaps();
+  isLoaded = true;
+  undoManager.clear();
+  enableControls();
+  updateTrackMeta();
+  redrawAll();
 }
 
 // ===== Buffer Changed (after edit/effects) =====
@@ -1265,12 +1685,27 @@ dom.btnLoad.addEventListener('click', () => dom.fileInput.click());
 
 dom.fileInput.addEventListener('change', (e) => {
   const file = (e.target as HTMLInputElement).files![0];
-  if (file) loadAudioFile(file);
+  if (file) {
+    if (file.type.startsWith('video/') || /\.(mp4|webm|ogv|mov)$/i.test(file.name)) {
+      loadVideoFile(file);
+    } else {
+      loadAudioFile(file);
+    }
+  }
   dom.fileInput.value = '';
 });
 
 dom.btnPlay.addEventListener('click', () => {
   if (!isLoaded) return;
+
+  if (isYouTubeMode && youtubePlayer) {
+    // YouTube mode: YouTube player is the source of truth
+    youtubePlayer.seekTo(selectionManager.cursorTime, true);
+    youtubePlayer.playVideo();
+    startYouTubeAnimLoop();
+    return;
+  }
+
   const sel = selectionManager.selectionRange;
   if (sel) {
     audioEngine.playRange(sel.start, sel.end);
@@ -1285,23 +1720,41 @@ dom.btnPlay.addEventListener('click', () => {
   }
   updatePlayPauseButtons();
   startAnimLoop();
+  if (hasVideoSource) {
+    dom.videoElement.currentTime = selectionManager.cursorTime;
+    dom.videoElement.play().catch(() => {});
+  }
 });
 
 dom.btnPause.addEventListener('click', () => {
+  if (isYouTubeMode && youtubePlayer) {
+    youtubePlayer.pauseVideo();
+    // Don't stop the YT anim loop — it will detect paused state and update buttons
+    return;
+  }
   audioEngine.pause();
   for (const t of extraTracks) t.engine.pause();
   selectionManager.setCursor(audioEngine.currentTime);
   updatePlayPauseButtons();
   stopAnimLoop();
   redrawAll();
+  if (hasVideoSource) dom.videoElement.pause();
 });
 
 dom.btnStop.addEventListener('click', () => {
+  if (isYouTubeMode && youtubePlayer) {
+    youtubePlayer.pauseVideo();
+    youtubePlayer.seekTo(0, true);
+    selectionManager.setCursor(0);
+    redrawAll();
+    return;
+  }
   audioEngine.stop(selectionManager.cursorTime);
   for (const t of extraTracks) t.engine.stop(selectionManager.cursorTime);
   updatePlayPauseButtons();
   stopAnimLoop();
   redrawAll();
+  if (hasVideoSource) { dom.videoElement.pause(); dom.videoElement.currentTime = 0; }
 });
 
 dom.btnZoomIn.addEventListener('click', () => { viewport.zoomIn(); redrawAll(); });
@@ -1318,6 +1771,12 @@ dom.speedSelect.addEventListener('change', (e) => {
   const rate = parseFloat((e.target as HTMLSelectElement).value);
   audioEngine.setPlaybackRate(rate);
   for (const t of extraTracks) t.engine.setPlaybackRate(rate);
+  if (isYouTubeMode && youtubePlayer && youtubePlayer.setPlaybackRate) {
+    youtubePlayer.setPlaybackRate(rate);
+  }
+  if (hasVideoSource) {
+    dom.videoElement.playbackRate = rate;
+  }
 });
 
 // ===== Theme Toggle =====
@@ -1531,6 +1990,8 @@ function newProject(): void {
   audioEngine.stop();
   audioEngine.audioBuffer = null;
   audioEngine.originalBuffer = null;
+  cleanupYouTubePlayer();
+  cleanupVideoSource();
   for (const t of [...extraTracks]) {
     t.engine.stop();
     t.row.remove();
@@ -1653,6 +2114,8 @@ function setupMenuBar(): void {
         { label: 'New Project', icon: Icons.newFile, action: newProject },
         { label: 'Open Project', icon: Icons.load, action: loadProject },
         { label: 'Import Audio', icon: Icons.importFile, shortcut: 'Ctrl+O', action: () => dom.fileInput.click() },
+        { label: 'Load from URL...', icon: Icons.url, shortcut: 'Ctrl+U', action: openURLDialog },
+        { label: 'Load YouTube Video...', icon: Icons.youtube, action: openYouTubeDialog },
         { label: 'Import Labels', action: importLabels },
         { separator: true },
         { label: 'Export Audio', icon: Icons.exportFile, action: openExportAudioDialog },
@@ -1865,7 +2328,9 @@ dom.timelineContainer.addEventListener('mousedown', (e) => {
   time = snapTime(time);
   selectionManager.setCursor(time);
   selectionManager.clearSelection();
-  if (audioEngine.isPlaying) {
+  if (isYouTubeMode && youtubePlayer && youtubePlayer.seekTo) {
+    youtubePlayer.seekTo(time, true);
+  } else if (audioEngine.isPlaying) {
     audioEngine.seek(time);
     for (const t of extraTracks) t.engine.seek(time);
   }
@@ -1885,9 +2350,14 @@ dom.trackContainer.addEventListener('mousedown', (e) => {
     selectionManager.selectionEnd = selectionManager.cursorTime;
   }
 
-  if (audioEngine.isPlaying) {
+  if (isYouTubeMode && youtubePlayer && youtubePlayer.seekTo) {
+    youtubePlayer.seekTo(selectionManager.cursorTime, true);
+  } else if (audioEngine.isPlaying) {
     audioEngine.seek(selectionManager.cursorTime);
     for (const t of extraTracks) t.engine.seek(selectionManager.cursorTime);
+  }
+  if (hasVideoSource && dom.videoElement.readyState >= 2) {
+    dom.videoElement.currentTime = selectionManager.cursorTime;
   }
   redrawAll();
 });
@@ -2014,8 +2484,15 @@ document.addEventListener('keydown', (e) => {
   switch (e.key) {
     case ' ':
       e.preventDefault();
-      if (audioEngine.isPlaying) dom.btnPause.click();
-      else if (isLoaded) dom.btnPlay.click();
+      if (isYouTubeMode && youtubePlayer && youtubePlayer.getPlayerState) {
+        const ytState = youtubePlayer.getPlayerState();
+        if (ytState === 1) dom.btnPause.click();
+        else dom.btnPlay.click();
+      } else if (audioEngine.isPlaying) {
+        dom.btnPause.click();
+      } else if (isLoaded) {
+        dom.btnPlay.click();
+      }
       break;
     case '=': case '+':
       if (isCtrl) { e.preventDefault(); viewport.zoomIn(); redrawAll(); }
@@ -2040,6 +2517,7 @@ document.addEventListener('keydown', (e) => {
       break;
     case 'v':
       if (isCtrl) { e.preventDefault(); doPaste(); }
+      else if (hasVideoSource || isYouTubeMode) { toggleVideoDisplayMode(); }
       break;
     case 'd':
       if (isCtrl) { e.preventDefault(); doDuplicate(); }
@@ -2058,6 +2536,9 @@ document.addEventListener('keydown', (e) => {
       break;
     case 'y':
       if (isCtrl) { e.preventDefault(); dom.btnRedo.click(); }
+      break;
+    case 'u':
+      if (isCtrl) { e.preventDefault(); openURLDialog(); }
       break;
     case 's':
       if (isCtrl) { e.preventDefault(); saveProject(); }
@@ -2082,6 +2563,8 @@ document.addEventListener('keydown', (e) => {
       if (dom.exportAudioDialog.style.display !== 'none') { dom.exportAudioDialog.style.display = 'none'; break; }
       if (dom.gainDialog.style.display !== 'none') { dom.gainDialog.style.display = 'none'; break; }
       if (dom.mixdownDialog.style.display !== 'none') { dom.mixdownDialog.style.display = 'none'; break; }
+      if (dom.urlDialog.style.display !== 'none') { dom.urlDialog.style.display = 'none'; break; }
+      if (dom.youtubeDialog.style.display !== 'none') { dom.youtubeDialog.style.display = 'none'; break; }
       selectionManager.clearSelection();
       labelTrack.selectedLabelId = null;
       labelTrack.selectedLabelIds.clear();
@@ -2126,6 +2609,80 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
+// ===== URL Dialog =====
+function openURLDialog(): void {
+  dom.urlInput.value = '';
+  dom.urlError.style.display = 'none';
+  dom.urlDialog.style.display = 'flex';
+  dom.urlInput.focus();
+}
+
+dom.urlCancel.addEventListener('click', () => {
+  dom.urlDialog.style.display = 'none';
+});
+
+dom.urlConfirm.addEventListener('click', () => {
+  const url = dom.urlInput.value.trim();
+  if (!url) {
+    dom.urlError.textContent = 'Please enter a URL';
+    dom.urlError.style.display = 'block';
+    return;
+  }
+  try {
+    new URL(url);
+  } catch {
+    dom.urlError.textContent = 'Invalid URL format';
+    dom.urlError.style.display = 'block';
+    return;
+  }
+  dom.urlError.style.display = 'none';
+  dom.urlDialog.style.display = 'none';
+  loadFromURL(url);
+});
+
+dom.urlInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') dom.urlConfirm.click();
+});
+
+// ===== YouTube Dialog =====
+function openYouTubeDialog(): void {
+  dom.youtubeInput.value = '';
+  dom.youtubeError.style.display = 'none';
+  dom.youtubeDialog.style.display = 'flex';
+  dom.youtubeInput.focus();
+}
+
+dom.youtubeCancel.addEventListener('click', () => {
+  dom.youtubeDialog.style.display = 'none';
+});
+
+dom.youtubeConfirm.addEventListener('click', () => {
+  const input = dom.youtubeInput.value.trim();
+  const videoId = extractYouTubeId(input);
+  if (!videoId) {
+    dom.youtubeError.textContent = 'Could not extract YouTube video ID. Enter a YouTube URL or 11-character video ID.';
+    dom.youtubeError.style.display = 'block';
+    return;
+  }
+  dom.youtubeError.style.display = 'none';
+  dom.youtubeDialog.style.display = 'none';
+  loadYouTubeVideo(videoId);
+});
+
+dom.youtubeInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') dom.youtubeConfirm.click();
+});
+
+// ===== Video Panel Events =====
+dom.videoPanelClose.addEventListener('click', () => {
+  videoDisplayMode = 'hidden';
+  dom.videoPanel.style.display = 'none';
+  removeVideoInline();
+});
+
+dom.videoPanelModeBtn.addEventListener('click', toggleVideoDisplayMode);
+makeVideoPanelDraggable();
+
 // ===== Drag & Drop =====
 document.addEventListener('dragover', (e) => {
   e.preventDefault();
@@ -2144,7 +2701,9 @@ document.addEventListener('drop', (e) => {
   const files = e.dataTransfer!.files;
   if (files.length > 0) {
     const file = files[0];
-    if (file.type.startsWith('audio/') || /\.(wav|mp3|ogg|flac|m4a|aac|webm)$/i.test(file.name)) {
+    if (file.type.startsWith('video/') || /\.(mp4|webm|ogv|mov|mkv)$/i.test(file.name)) {
+      loadVideoFile(file);
+    } else if (file.type.startsWith('audio/') || /\.(wav|mp3|ogg|flac|m4a|aac|webm)$/i.test(file.name)) {
       loadAudioFile(file);
     } else if (/\.(txt|json|srt|vtt|xml)$/i.test(file.name)) {
       file.text().then(text => {

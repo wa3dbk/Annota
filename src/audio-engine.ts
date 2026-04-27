@@ -52,6 +52,15 @@ export class AudioEngine {
     return this.audioBuffer;
   }
 
+  async loadArrayBuffer(arrayBuffer: ArrayBuffer): Promise<AudioBuffer> {
+    this._ensureContext();
+    this.stop();
+    this.audioBuffer = await this.audioContext!.decodeAudioData(arrayBuffer);
+    this.originalBuffer = this._cloneBuffer(this.audioBuffer);
+    this._emit('loaded', this.audioBuffer);
+    return this.audioBuffer;
+  }
+
   async decodeFile(file: File): Promise<AudioBuffer> {
     this._ensureContext();
     const arrayBuffer = await file.arrayBuffer();

@@ -53,4 +53,7 @@ export const Icons: Record<string, string> = {
   image: '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M2 3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3zm1 0v7l3-3 2 2 3-3 2 2V3H3z"/></svg>',
   speed: '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 2a6 6 0 1 0 0 12A6 6 0 0 0 8 2zM1 8a7 7 0 1 1 14 0A7 7 0 0 1 1 8zm7-3v3.5l2.5 1.5-.5.87L7 9V5h1z"/></svg>',
   reset: '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M2 8a6 6 0 0 1 10.47-4H10v-1h4v4h-1V4.53A7 7 0 1 0 14.93 9H13.9A6 6 0 0 1 2 8z"/></svg>',
+  video: '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M2 3a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V9.5l3 2V4.5l-3 2V4a1 1 0 0 0-1-1H2z"/></svg>',
+  url: '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M6.354 5.5H4a3 3 0 0 0 0 6h3a3 3 0 0 0 2.83-4H8.83A2 2 0 0 1 7 9.5H4a2 2 0 1 1 0-4h2.354M9.646 10.5H12a3 3 0 0 0 0-6H9a3 3 0 0 0-2.83 4h1.17A2 2 0 0 1 9 6.5h3a2 2 0 1 1 0 4H9.646z"/></svg>',
+  youtube: '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1.5c-3.5 0-6.5.3-6.5.3S.5 2.7.5 4.2v3.6c0 1.5 1 2.4 1 2.4s3 .3 6.5.3 6.5-.3 6.5-.3 1-.9 1-2.4V4.2c0-1.5-1-2.4-1-2.4S11.5 1.5 8 1.5zM6.5 4.5l4 2.5-4 2.5v-5z"/></svg>',
 };
