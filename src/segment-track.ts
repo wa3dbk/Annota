@@ -307,12 +307,12 @@ export class SegmentTrack {
     if (this._isDragging && this._dragMode) {
       if (this._dragMode === 'move' && this._dragSegment) {
         const duration = this._dragSegment.end - this._dragSegment.start;
-        this._dragSegment.start = Math.max(0, time - this._dragOffset);
+        this._dragSegment.start = Math.max(0, Math.min(time - this._dragOffset, this.viewport.duration - duration));
         this._dragSegment.end = this._dragSegment.start + duration;
       } else if (this._dragMode === 'resize-start' && this._dragSegment) {
         this._dragSegment.start = Math.max(0, Math.min(time, this._dragSegment.end - 0.01));
       } else if (this._dragMode === 'resize-end' && this._dragSegment) {
-        this._dragSegment.end = Math.max(this._dragSegment.start + 0.01, time);
+        this._dragSegment.end = Math.max(this._dragSegment.start + 0.01, Math.min(time, this.viewport.duration));
       }
       return;
     }
