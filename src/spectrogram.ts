@@ -211,15 +211,16 @@ export class SpectrogramRenderer {
   }
 
   drawFreqScale(ctx: CanvasRenderingContext2D, width: number, height: number): void {
-    const sampleRate = this.audioEngine.sampleRate || 44100;
+    const sampleRate = this.audioEngine.sampleRate;
+    if (sampleRate <= 0) return;
     const nyquist = sampleRate / 2;
 
     ctx.clearRect(0, 0, width, height);
     ctx.fillStyle = this.themeColors.axisBg || 'rgba(240,240,244,0.85)';
     ctx.fillRect(0, 0, width, height);
 
-    const allMarks = [100, 200, 500, 1000, 2000, 4000, 8000, 12000, 16000, 20000];
-    const freqMarks = allMarks.filter(f => f < nyquist);
+    const allMarks = [50, 100, 200, 500, 1000, 2000, 3000, 4000, 6000, 8000, 12000, 16000, 20000, 24000];
+    const freqMarks = allMarks.filter(f => f <= nyquist);
 
     ctx.font = '9px -apple-system, BlinkMacSystemFont, sans-serif';
     ctx.textAlign = 'right';
@@ -244,6 +245,11 @@ export class SpectrogramRenderer {
       }
       ctx.fillText(label, width - 4, y + 3);
     }
+
+    // Add Nyquist label at the top
+    ctx.fillStyle = this.themeColors.axisText || '#7a7a8e';
+    const nyquistLabel = nyquist >= 1000 ? (nyquist / 1000).toFixed(1).replace(/\.0$/, '') + 'k' : nyquist + '';
+    ctx.fillText(nyquistLabel, width - 4, 12);
   }
 
   destroy(): void {
