@@ -19,10 +19,28 @@ export interface Label {
   color: string | null;
 }
 
+// Segment data structure (replaces Label)
+export interface Segment {
+  id: string;
+  start: number;
+  end: number;
+  text: string;
+  speakerId: string | null;
+  category: string;
+}
+
+// Speaker identity
+export interface Speaker {
+  id: string;
+  name: string;
+  color: string;
+}
+
 // Undo snapshot
 export interface UndoSnapshot {
   audioBuffer: SerializedAudioBuffer | null;
-  labels: Label[];
+  segments: Segment[];
+  speakers: Speaker[];
   cursorTime: number;
 }
 
@@ -59,7 +77,10 @@ export interface EQBand {
 // Project save data
 export interface ProjectSaveData {
   timestamp: number;
-  labels: Label[];
+  labels?: Label[];          // Legacy — kept for migration
+  segments: Segment[];       // New
+  speakers: Speaker[];       // New
+  speakersEnabled: boolean;  // New
   viewport: { samplesPerPixel: number; scrollSamples: number };
   cursorTime: number;
   viewMode: string;
