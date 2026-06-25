@@ -2428,8 +2428,14 @@ function handleWheel(e: WheelEvent): void {
   if (e.ctrlKey || e.metaKey) {
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const px = e.clientX - rect.left;
-    if (e.deltaY < 0) viewport.zoomIn(px);
-    else viewport.zoomOut(px);
+    const isTrackpad = e.deltaMode === 0 && Math.abs(e.deltaY) < 50;
+    if (isTrackpad) {
+      const dampedDelta = e.deltaY * 0.02;
+      viewport.zoomByDelta(dampedDelta, px);
+    } else {
+      if (e.deltaY < 0) viewport.zoomIn(px);
+      else viewport.zoomOut(px);
+    }
   } else {
     viewport.scrollByPixels(e.deltaY > 0 ? 50 : -50);
   }

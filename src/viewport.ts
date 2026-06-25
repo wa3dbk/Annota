@@ -12,6 +12,7 @@ export class Viewport {
   maxSamplesPerPixel: number = 65536;
   scrollSamples: number = 0;
   private _listeners: (() => void)[] = [];
+  private _zoomAccumulator: number = 0;
 
   setAudioParams(sampleRate: number, totalSamples: number): void {
     this.sampleRate = sampleRate;
@@ -68,6 +69,18 @@ export class Viewport {
 
   zoomOut(anchorPixel: number | null = null): void {
     this._zoom(this.samplesPerPixel * 2, anchorPixel);
+  }
+
+  zoomByDelta(delta: number, anchorPixel: number | null = null): void {
+    this._zoomAccumulator += delta;
+    while (this._zoomAccumulator >= 1) {
+      this._zoomAccumulator -= 1;
+      this.zoomOut(anchorPixel);
+    }
+    while (this._zoomAccumulator <= -1) {
+      this._zoomAccumulator += 1;
+      this.zoomIn(anchorPixel);
+    }
   }
 
   zoomFit(): void {
