@@ -90,6 +90,7 @@ export class Viewport {
       Math.ceil(this.totalSamples / this.canvasWidth)
     );
     this.scrollSamples = 0;
+    this._zoomAccumulator = 0;
     this._notify();
   }
 
