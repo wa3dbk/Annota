@@ -104,19 +104,24 @@
           <canvas id="freq-scale-canvas" class="axis-overlay axis-left" style="display:none"></canvas>
           <div id="drop-zone">
             <div class="drop-zone-content">
-              <p>Drop audio file here or click <strong>Load</strong></p>
-              <p class="drop-hint">WAV, MP3, OGG, FLAC</p>
+              <p>Drop audio or video file here or click <strong>Load</strong></p>
+              <p class="drop-hint">WAV, MP3, OGG, FLAC, MP4, WebM</p>
             </div>
           </div>
         </div>
       </div>
 
-      <div id="label-row" class="track-row-item">
-        <div class="track-header" id="label-header">
-          <div class="track-name">Labels</div>
-          <div class="label-header-controls">
-            <input type="text" id="label-search" placeholder="Search..." class="label-search-input" />
-            <select id="label-category-filter" class="label-category-select">
+      <div id="segment-row" class="track-row-item">
+        <div class="track-header" id="segment-header">
+          <div class="track-name">Segments</div>
+          <div class="segment-header-controls">
+            <div class="segment-speaker-pills" id="speaker-pills"></div>
+            <div class="segment-header-buttons">
+              <button id="btn-add-speaker" class="track-btn-sm" title="Add speaker">+ Speaker</button>
+              <button id="btn-manage-speakers" class="track-btn-sm" title="Manage speakers">Manage</button>
+            </div>
+            <input type="text" id="segment-search" placeholder="Search..." class="label-search-input" />
+            <select id="segment-category-filter" class="label-category-select">
               <option value="">All</option>
               <option value="speech">Speech</option>
               <option value="noise">Noise</option>
@@ -126,9 +131,9 @@
             </select>
           </div>
         </div>
-        <div class="track-canvas-container" id="label-container">
-          <canvas id="label-canvas"></canvas>
-          <input type="text" id="label-editor" class="label-editor" style="display:none" />
+        <div class="track-canvas-container" id="segment-container">
+          <canvas id="segment-canvas"></canvas>
+          <input type="text" id="segment-editor" class="label-editor" style="display:none" />
         </div>
       </div>
     </div>
@@ -149,26 +154,70 @@
   </div>
 
   <!-- Hidden inputs -->
-  <input type="file" id="file-input" accept="audio/*" style="display:none">
+  <input type="file" id="file-input" accept="audio/*,video/mp4,video/webm,video/ogg" style="display:none">
   <input type="file" id="add-track-input" accept="audio/*" style="display:none">
   <input type="file" id="concat-input" accept="audio/*" style="display:none">
-  <input type="file" id="label-file-input" accept=".txt,.json,.srt,.vtt,.xml" style="display:none">
+  <input type="file" id="segment-file-input" accept=".txt,.json,.srt,.vtt,.xml,.tsv,.stm" style="display:none">
   <input type="file" id="project-file-input" accept=".json" style="display:none">
 
-  <!-- Export labels dialog -->
+  <!-- Export segments dialog -->
   <div id="export-dialog" class="dialog-overlay" style="display:none">
-    <div class="dialog">
-      <h3>Export Annotations</h3>
+    <div class="dialog" style="min-width:440px">
+      <h3>Export Segments</h3>
       <div class="dialog-body">
-        <label><input type="radio" name="export-fmt" value="audacity" checked> Audacity .txt</label>
-        <label><input type="radio" name="export-fmt" value="json"> JSON</label>
-        <label><input type="radio" name="export-fmt" value="srt"> SRT (subtitles)</label>
-        <label><input type="radio" name="export-fmt" value="vtt"> WebVTT (captions)</label>
-        <label><input type="radio" name="export-fmt" value="elan"> ELAN XML</label>
+        <div class="export-format-label">Format</div>
+        <div class="export-format-grid" id="export-format-grid">
+          <button class="export-fmt-btn" data-fmt="srt">SRT</button>
+          <button class="export-fmt-btn" data-fmt="vtt">VTT</button>
+          <button class="export-fmt-btn" data-fmt="stm">STM</button>
+          <button class="export-fmt-btn selected" data-fmt="tsv">TSV</button>
+          <button class="export-fmt-btn" data-fmt="audacity">Audacity</button>
+          <button class="export-fmt-btn" data-fmt="json">JSON</button>
+          <button class="export-fmt-btn" data-fmt="elan">ELAN</button>
+        </div>
+        <div id="tsv-columns-panel" class="tsv-columns-panel">
+          <div class="tsv-columns-label">TSV Columns</div>
+          <div class="tsv-columns-checks">
+            <label><input type="checkbox" value="start" checked disabled> start</label>
+            <label><input type="checkbox" value="end" checked disabled> end</label>
+            <label><input type="checkbox" value="speaker" checked> speaker</label>
+            <label><input type="checkbox" value="text" checked> text</label>
+            <label><input type="checkbox" value="category"> category</label>
+            <label><input type="checkbox" value="duration"> duration</label>
+          </div>
+          <p class="tsv-hint">start and end are always included.</p>
+        </div>
       </div>
       <div class="dialog-actions">
         <button id="export-cancel" class="btn-secondary">Cancel</button>
         <button id="export-confirm" class="btn-primary">Export</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Combine Tracks Dialog -->
+  <div id="combine-dialog" class="dialog-overlay" style="display:none">
+    <div class="dialog" style="min-width:480px">
+      <h3>Combine Tracks</h3>
+      <div class="dialog-body">
+        <div class="combine-track-list" id="combine-track-list"></div>
+        <label class="dialog-toggle"><input type="checkbox" id="combine-loop"> Loop shorter track to fill duration</label>
+        <div class="combine-mix-section">
+          <div class="combine-mix-label">Mix Balance</div>
+          <div id="combine-sliders"></div>
+        </div>
+        <div class="combine-output-section">
+          <div class="combine-output-label">Output</div>
+          <div class="combine-output-buttons">
+            <button class="combine-output-btn selected" data-mode="mixdown">Mix to single track</button>
+            <button class="combine-output-btn" data-mode="separate">Keep as separate tracks</button>
+          </div>
+        </div>
+      </div>
+      <div class="dialog-actions">
+        <button id="combine-cancel" class="btn-secondary">Cancel</button>
+        <button id="combine-preview" class="btn-secondary">Preview</button>
+        <button id="combine-confirm" class="btn-primary">Combine</button>
       </div>
     </div>
   </div>
@@ -366,6 +415,34 @@
     </div>
   </div>
 
+  <!-- Speaker Manager Dialog -->
+  <div id="speaker-dialog" class="dialog-overlay" style="display:none">
+    <div class="dialog" style="min-width:420px">
+      <h3>Manage Speakers</h3>
+      <div class="dialog-body">
+        <label class="dialog-toggle"><input type="checkbox" id="speakers-enabled" checked> Enable speaker assignment</label>
+        <div id="speaker-list" class="speaker-list"></div>
+        <div class="speaker-add-row">
+          <input type="text" id="new-speaker-name" placeholder="New speaker name..." class="speaker-name-input">
+          <button id="btn-speaker-add" class="btn-primary btn-sm">Add</button>
+        </div>
+        <div class="speaker-merge-section">
+          <div class="speaker-merge-label">Merge speakers</div>
+          <div class="speaker-merge-row">
+            <span>Merge</span>
+            <select id="merge-source"></select>
+            <span>into</span>
+            <select id="merge-target"></select>
+            <button id="btn-speaker-merge" class="btn-secondary btn-sm">Merge</button>
+          </div>
+        </div>
+      </div>
+      <div class="dialog-actions">
+        <button id="speaker-dialog-close" class="btn-primary">Close</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Keyboard shortcuts dialog -->
   <div id="shortcuts-dialog" class="dialog-overlay" style="display:none">
     <div class="dialog" style="min-width:420px;max-height:80vh;overflow-y:auto">
@@ -389,6 +466,8 @@
         <div class="shortcut-row"><span class="shortcut-key">Home</span><span>Go to start</span></div>
         <div class="shortcut-row"><span class="shortcut-key">End</span><span>Go to end</span></div>
         <div class="shortcut-row"><span class="shortcut-key">M</span><span>Toggle mute</span></div>
+        <div class="shortcut-row"><span class="shortcut-key">Ctrl+U</span><span>Load from URL</span></div>
+        <div class="shortcut-row"><span class="shortcut-key">V</span><span>Toggle video preview</span></div>
         <div class="shortcut-row"><span class="shortcut-key">Esc</span><span>Deselect / Close</span></div>
       </div>
       <div class="dialog-actions">
@@ -412,6 +491,59 @@
     </div>
   </div>
 
+  <!-- Video preview panel (floating) -->
+  <div id="video-panel" class="video-panel" style="display:none">
+    <div class="video-panel-header">
+      <span class="video-panel-title">Video Preview</span>
+      <div class="video-panel-actions">
+        <button class="video-panel-mode" id="video-panel-mode" title="Toggle display mode (floating / inline / hidden)">&#8645;</button>
+        <button class="video-panel-close" id="video-panel-close" title="Hide video">&times;</button>
+      </div>
+    </div>
+    <div class="video-panel-body">
+      <video id="video-element" muted></video>
+    </div>
+  </div>
+
+  <!-- Load from URL dialog -->
+  <div id="url-dialog" class="dialog-overlay" style="display:none">
+    <div class="dialog" style="min-width:400px">
+      <h3>Load from URL</h3>
+      <div class="dialog-body">
+        <label style="display:block;margin-bottom:8px">URL:
+          <input type="url" id="url-input" placeholder="https://example.com/audio.wav"
+                 style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;margin-top:4px;box-sizing:border-box">
+        </label>
+        <p style="font-size:11px;color:var(--text-dim);margin:0">Supports WAV, MP3, FLAC, M4A, MP4, WebM and other browser-supported formats.</p>
+        <p id="url-error" style="color:var(--danger);font-size:12px;display:none;margin-top:6px"></p>
+      </div>
+      <div class="dialog-actions">
+        <button id="url-cancel" class="btn-secondary">Cancel</button>
+        <button id="url-confirm" class="btn-primary">Load</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- YouTube dialog -->
+  <div id="youtube-dialog" class="dialog-overlay" style="display:none">
+    <div class="dialog" style="min-width:400px">
+      <h3>Load YouTube Video</h3>
+      <div class="dialog-body">
+        <label style="display:block;margin-bottom:8px">YouTube URL or Video ID:
+          <input type="text" id="youtube-input" placeholder="https://www.youtube.com/watch?v=..."
+                 style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;margin-top:4px;box-sizing:border-box">
+        </label>
+        <p style="font-size:11px;color:var(--text-dim);margin:0">Supported: youtube.com/watch?v=..., youtu.be/..., youtube.com/shorts/..., or a bare video ID.</p>
+        <p id="youtube-error" style="color:var(--danger);font-size:12px;display:none;margin-top:6px"></p>
+      </div>
+      <div class="dialog-actions">
+        <button id="youtube-cancel" class="btn-secondary">Cancel</button>
+        <button id="youtube-confirm" class="btn-primary">Load</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Keyboard shortcuts additions for new features -->
   <script type="module" src="/src/app/app.ts"></script>
 </body>
 </html>
