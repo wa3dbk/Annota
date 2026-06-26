@@ -2255,6 +2255,254 @@ function separateChannels(): void {
   }
 }
 
+// ===== Extra Track Helpers =====
+function addExtraTrackFromBuffer(name: string, buffer: AudioBuffer): void {
+  audioEngine._ensureContext();
+  const engine = new AudioEngine();
+  engine._ensureContext = audioEngine._ensureContext.bind(audioEngine);
+  engine.audioContext = audioEngine.audioContext;
+  engine.gainNode = audioEngine.audioContext!.createGain();
+  engine.gainNode.connect(audioEngine.audioContext!.destination);
+  engine.audioBuffer = buffer;
+
+  const id = ++trackIdCounter;
+  const row = document.createElement('div');
+  row.className = 'track-row-item';
+  row.dataset.trackId = String(id);
+
+  const header = document.createElement('div');
+  header.className = 'track-header';
+  header.innerHTML = `
+    <button class="track-close-btn" title="Remove track">&times;</button>
+    <div class="track-name">${name.slice(0, 16)}</div>
+    <div class="track-meta" style="font-size:10px;color:var(--text-dim);font-family:var(--font-mono)">
+      ${buffer.sampleRate} Hz &middot; ${buffer.numberOfChannels}ch
+    </div>
+    <div class="track-controls">
+      <div class="track-buttons">
+        <button class="track-btn track-mute-btn" title="Mute">M</button>
+        <button class="track-btn track-solo-btn" title="Solo">S</button>
+      </div>
+      <label class="track-slider-label">Vol<input type="range" class="track-vol" min="0" max="1" step="0.01" value="1"></label>
+      <label class="track-slider-label">Pan<input type="range" class="track-pan" min="-1" max="1" step="0.01" value="0"></label>
+    </div>
+  `;
+
+  const canvasContainer = document.createElement('div');
+  canvasContainer.className = 'track-canvas-container';
+  const canvas = document.createElement('canvas');
+  canvasContainer.appendChild(canvas);
+
+  row.appendChild(header);
+  row.appendChild(canvasContainer);
+  addResizeHandle(row);
+  dom.tracksArea.appendChild(row);
+
+  const wf = new WaveformRenderer(canvas, viewport, engine);
+  const sz = getElementSize(canvasContainer);
+  wf.resize(sz.width, Math.max(sz.height, 80));
+  wf.buildMipmaps();
+
+  let panNode: StereoPannerNode | null = null;
+  if (typeof audioEngine.audioContext!.createStereoPanner === 'function') {
+    panNode = audioEngine.audioContext!.createStereoPanner();
+    engine.gainNode!.disconnect();
+    engine.gainNode!.connect(panNode);
+    panNode.connect(audioEngine.audioContext!.destination);
+  }
+
+  const track: ExtraTrack = {
+    id, name, engine, waveform: wf, canvas, container: canvasContainer, row,
+    muted: false, solo: false, pan: 0, volume: 1, panNode
+  };
+  extraTracks.push(track);
+
+  const vol = header.querySelector('.track-vol') as HTMLInputElement;
+  vol.addEventListener('input', () => {
+    track.volume = parseFloat(vol.value);
+    engine.setVolume(track.muted ? 0 : track.volume);
+  });
+
+  const pan = header.querySelector('.track-pan') as HTMLInputElement;
+  pan.addEventListener('input', () => {
+    track.pan = parseFloat(pan.value);
+    if (track.panNode) track.panNode.pan.value = track.pan;
+  });
+
+  const muteBtn = header.querySelector('.track-mute-btn') as HTMLButtonElement;
+  muteBtn.addEventListener('click', () => {
+    track.muted = !track.muted;
+    muteBtn.classList.toggle('muted', track.muted);
+    engine.setVolume(track.muted ? 0 : track.volume);
+  });
+
+  const soloBtn = header.querySelector('.track-solo-btn') as HTMLButtonElement;
+  soloBtn.addEventListener('click', () => {
+    track.solo = !track.solo;
+    soloBtn.classList.toggle('active', track.solo);
+    applySoloState();
+  });
+
+  header.querySelector('.track-close-btn')!.addEventListener('click', () => {
+    engine.stop();
+    if (panNode) panNode.disconnect();
+    row.remove();
+    const idx = extraTracks.findIndex(t => t.id === id);
+    if (idx !== -1) extraTracks.splice(idx, 1);
+    applySoloState();
+    updateSizes();
+  });
+
+  const longestDuration = Math.max(audioEngine.duration, ...extraTracks.map(t => t.engine.duration));
+  const longestSamples = Math.round(longestDuration * audioEngine.sampleRate);
+  if (longestSamples > viewport.totalSamples) {
+    viewport.setAudioParams(audioEngine.sampleRate, longestSamples);
+  }
+
+  updateSizes();
+}
+
+function removeExtraTrack(id: number): void {
+  const track = extraTracks.find(t => t.id === id);
+  if (!track) return;
+  track.engine.stop();
+  if (track.panNode) track.panNode.disconnect();
+  track.row.remove();
+  const idx = extraTracks.findIndex(t => t.id === id);
+  if (idx !== -1) extraTracks.splice(idx, 1);
+  applySoloState();
+  updateSizes();
+}
+
+// ===== Channel Operations =====
+function splitStereoToMono(): void {
+  if (!audioEngine.audioBuffer || audioEngine.channels < 2) {
+    alert('Track must be stereo to split.');
+    return;
+  }
+  captureUndoState('Split stereo to mono');
+
+  const buf = audioEngine.audioBuffer;
+  const sr = buf.sampleRate;
+  const len = buf.length;
+  audioEngine._ensureContext();
+
+  const leftBuf = audioEngine.audioContext!.createBuffer(1, len, sr);
+  leftBuf.getChannelData(0).set(buf.getChannelData(0));
+  audioEngine.audioBuffer = leftBuf;
+
+  const rightBuf = audioEngine.audioContext!.createBuffer(1, len, sr);
+  rightBuf.getChannelData(0).set(buf.getChannelData(1));
+
+  addExtraTrackFromBuffer('Right', rightBuf);
+
+  document.querySelector('#track-row .track-name')!.textContent = 'Left';
+
+  onBufferChanged(false);
+  computeSpectrogram();
+}
+
+function combineMonoToStereo(leftTrackId: number | 'main', rightTrackId: number | 'main'): void {
+  captureUndoState('Combine to stereo');
+  audioEngine._ensureContext();
+
+  const getBuffer = (id: number | 'main'): AudioBuffer | null => {
+    if (id === 'main') return audioEngine.audioBuffer;
+    const track = extraTracks.find(t => t.id === id);
+    return track ? track.engine.audioBuffer : null;
+  };
+
+  const leftBuf = getBuffer(leftTrackId);
+  const rightBuf = getBuffer(rightTrackId);
+  if (!leftBuf || !rightBuf) { alert('Both tracks must have audio.'); return; }
+
+  const sr = leftBuf.sampleRate;
+  const len = Math.max(leftBuf.length, rightBuf.length);
+  const stereoBuf = audioEngine.audioContext!.createBuffer(2, len, sr);
+
+  stereoBuf.getChannelData(0).set(leftBuf.getChannelData(0));
+  if (rightBuf.length < len) {
+    stereoBuf.getChannelData(1).set(rightBuf.getChannelData(0));
+  } else {
+    stereoBuf.getChannelData(1).set(rightBuf.getChannelData(0).slice(0, len));
+  }
+
+  if (leftTrackId !== 'main') removeExtraTrack(leftTrackId as number);
+  if (rightTrackId !== 'main') removeExtraTrack(rightTrackId as number);
+  audioEngine.audioBuffer = stereoBuf;
+
+  document.querySelector('#track-row .track-name')!.textContent = 'Audio';
+  onBufferChanged(false);
+  computeSpectrogram();
+}
+
+function mixAndRender(): void {
+  if (!audioEngine.audioBuffer) return;
+  captureUndoState('Mix and render');
+  audioEngine._ensureContext();
+
+  const sr = audioEngine.sampleRate;
+  const mainBuf = audioEngine.audioBuffer;
+  let maxLen = mainBuf.length;
+
+  const activeTracks: { buffer: AudioBuffer; volume: number }[] = [];
+  if (!mainTrackMuted) {
+    const vol = parseFloat(dom.volumeSlider.value);
+    activeTracks.push({ buffer: mainBuf, volume: vol });
+  }
+
+  for (const t of extraTracks) {
+    if (!t.muted && t.engine.audioBuffer) {
+      maxLen = Math.max(maxLen, t.engine.audioBuffer.length);
+      activeTracks.push({ buffer: t.engine.audioBuffer, volume: t.volume });
+    }
+  }
+
+  const mixBuf = audioEngine.audioContext!.createBuffer(1, maxLen, sr);
+  const mixData = mixBuf.getChannelData(0);
+
+  for (const track of activeTracks) {
+    const mono = track.buffer.numberOfChannels === 1
+      ? track.buffer.getChannelData(0)
+      : (() => {
+          const m = new Float32Array(track.buffer.length);
+          for (let ch = 0; ch < track.buffer.numberOfChannels; ch++) {
+            const d = track.buffer.getChannelData(ch);
+            for (let i = 0; i < d.length; i++) m[i] += d[i];
+          }
+          for (let i = 0; i < m.length; i++) m[i] /= track.buffer.numberOfChannels;
+          return m;
+        })();
+
+    for (let i = 0; i < mono.length; i++) {
+      mixData[i] += mono[i] * track.volume;
+    }
+  }
+
+  for (let i = 0; i < maxLen; i++) {
+    mixData[i] = Math.max(-1, Math.min(1, mixData[i]));
+  }
+
+  while (extraTracks.length > 0) {
+    removeExtraTrack(extraTracks[0].id);
+  }
+
+  audioEngine.audioBuffer = mixBuf;
+  document.querySelector('#track-row .track-name')!.textContent = 'Audio';
+  onBufferChanged(false);
+  computeSpectrogram();
+}
+
+function showCombineStereoDialog(): void {
+  // TODO: wired in Task 14
+  alert('Combine to Stereo — coming soon');
+}
+
+function showCombineTracksDialog(): void {
+  // TODO: wired in Task 12
+  alert('Combine Tracks — coming soon');
+}
+
 // ===== Menu Bar =====
 function setupMenuBar(): void {
   menuBar.setMenus([
@@ -2301,6 +2549,12 @@ function setupMenuBar(): void {
         { label: 'Append Audio', action: () => { if (isLoaded) dom.concatInput.click(); } },
         { separator: true },
         { label: 'Separate Channels', action: separateChannels },
+        { separator: true },
+        { label: 'Split Stereo to Mono', action: splitStereoToMono },
+        { label: 'Combine to Stereo...', action: showCombineStereoDialog },
+        { label: 'Mix and Render', action: mixAndRender },
+        { separator: true },
+        { label: 'Combine Tracks...', action: showCombineTracksDialog },
         { separator: true },
         { label: 'Add Segment', icon: Icons.label, shortcut: 'Ctrl+B', action: addSegment },
         { separator: true },
