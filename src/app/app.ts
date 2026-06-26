@@ -2494,9 +2494,33 @@ function mixAndRender(): void {
 }
 
 function showCombineStereoDialog(): void {
-  // TODO: wired in Task 14
-  alert('Combine to Stereo — coming soon');
+  const monoTracks = [
+    ...(audioEngine.channels === 1 ? [{ id: 'main', name: 'Audio (main)' }] : []),
+    ...extraTracks.filter(t => t.engine.channels === 1).map(t => ({ id: String(t.id), name: t.name }))
+  ];
+  if (monoTracks.length < 2) {
+    alert('Need at least 2 mono tracks to combine to stereo.');
+    return;
+  }
+  const leftSelect = document.getElementById('stereo-left') as HTMLSelectElement;
+  const rightSelect = document.getElementById('stereo-right') as HTMLSelectElement;
+  leftSelect.innerHTML = monoTracks.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
+  rightSelect.innerHTML = monoTracks.map((t, i) => `<option value="${t.id}" ${i === 1 ? 'selected' : ''}>${t.name}</option>`).join('');
+
+  (document.getElementById('stereo-dialog') as HTMLElement).style.display = 'flex';
 }
+
+document.getElementById('stereo-cancel')?.addEventListener('click', () => {
+  (document.getElementById('stereo-dialog') as HTMLElement).style.display = 'none';
+});
+
+document.getElementById('stereo-confirm')?.addEventListener('click', () => {
+  const leftId = (document.getElementById('stereo-left') as HTMLSelectElement).value;
+  const rightId = (document.getElementById('stereo-right') as HTMLSelectElement).value;
+  const toTrackId = (id: string) => id === 'main' ? 'main' as const : parseInt(id);
+  combineMonoToStereo(toTrackId(leftId), toTrackId(rightId));
+  (document.getElementById('stereo-dialog') as HTMLElement).style.display = 'none';
+});
 
 function showCombineTracksDialog(): void {
   if (extraTracks.length === 0) {
