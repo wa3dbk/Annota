@@ -1,10 +1,10 @@
 // ===== Clipboard Manager =====
-// Handles audio and label copy/cut/paste/duplicate operations
+// Handles audio and segment copy/cut/paste/duplicate operations
 
 import { clamp } from './utils';
 import { AudioEngine } from './audio-engine';
-import { LabelTrack } from './label-track';
-import type { Label } from './types';
+import { SegmentTrack } from './segment-track';
+import type { Segment } from './types';
 
 interface ClipboardAudioData {
   channels: Float32Array[];
@@ -13,25 +13,24 @@ interface ClipboardAudioData {
   length: number;
 }
 
-interface ClipboardLabelData {
+interface ClipboardSegmentData {
   start: number;
   end: number;
   text: string;
-  type: string;
   category: string;
-  color: string | null;
+  speakerId: string | null;
 }
 
 export class Clipboard {
   _audioData: ClipboardAudioData | null = null;
-  _labelData: ClipboardLabelData[] | null = null;
+  _segmentData: ClipboardSegmentData[] | null = null;
 
   get hasAudio(): boolean {
     return this._audioData != null;
   }
 
-  get hasLabels(): boolean {
-    return this._labelData != null && this._labelData.length > 0;
+  get hasSegments(): boolean {
+    return this._segmentData != null && this._segmentData.length > 0;
   }
 
   copyAudio(audioBuffer: AudioBuffer, startTime: number, endTime: number): void {
@@ -106,42 +105,37 @@ export class Clipboard {
     return this.pasteAudio(audioEngine, endTime);
   }
 
-  copyLabels(labels: Label[]): void {
-    if (!labels || labels.length === 0) return;
-    this._labelData = labels.map(l => ({
-      start: l.start,
-      end: l.end,
-      text: l.text,
-      type: l.type,
-      category: l.category || 'other',
-      color: l.color || null
+  copySegments(segments: Segment[]): void {
+    if (!segments || segments.length === 0) return;
+    this._segmentData = segments.map(s => ({
+      start: s.start,
+      end: s.end,
+      text: s.text,
+      category: s.category,
+      speakerId: s.speakerId
     }));
   }
 
-  cutLabels(labelTrack: LabelTrack, labelIds: string[]): void {
-    const labels = labelIds.map(id => labelTrack.getLabelById(id)).filter(Boolean) as Label[];
-    this.copyLabels(labels);
-    for (const id of labelIds) {
-      labelTrack.removeLabel(id);
+  cutSegments(segmentTrack: SegmentTrack, segmentIds: string[]): void {
+    const segments = segmentIds.map(id => segmentTrack.getSegmentById(id)).filter(Boolean) as Segment[];
+    this.copySegments(segments);
+    for (const id of segmentIds) {
+      segmentTrack.removeSegment(id);
     }
   }
 
-  pasteLabels(labelTrack: LabelTrack, insertTime: number): string[] {
-    if (!this._labelData || this._labelData.length === 0) return [];
+  pasteSegments(segmentTrack: SegmentTrack, insertTime: number): string[] {
+    if (!this._segmentData || this._segmentData.length === 0) return [];
 
-    const minStart = Math.min(...this._labelData.map(l => l.start));
+    const minStart = Math.min(...this._segmentData.map(s => s.start));
     const offset = insertTime - minStart;
 
     const newIds: string[] = [];
-    for (const l of this._labelData) {
-      const newLabel = l.type === 'point'
-        ? labelTrack.addPointLabel(l.start + offset, l.text)
-        : labelTrack.addRegionLabel(l.start + offset, l.end + offset, l.text);
-      if (newLabel.category !== undefined) {
-        newLabel.category = l.category;
-        newLabel.color = l.color;
-      }
-      newIds.push(newLabel.id);
+    for (const s of this._segmentData) {
+      const newSegment = segmentTrack.addSegment(s.start + offset, s.end + offset, s.text);
+      newSegment.category = s.category;
+      newSegment.speakerId = s.speakerId;
+      newIds.push(newSegment.id);
     }
     return newIds;
   }

@@ -24,7 +24,7 @@ export interface DOMRefs {
   fileInput: HTMLInputElement;
   addTrackInput: HTMLInputElement;
   concatInput: HTMLInputElement;
-  labelFileInput: HTMLInputElement;
+  segmentFileInput: HTMLInputElement;
   projectFileInput: HTMLInputElement;
   dropZone: HTMLElement;
 
@@ -33,14 +33,14 @@ export interface DOMRefs {
   spectrogramCanvas: HTMLCanvasElement;
   selectionCanvas: HTMLCanvasElement;
   cursorCanvas: HTMLCanvasElement;
-  labelCanvas: HTMLCanvasElement;
-  labelEditor: HTMLInputElement;
+  segmentCanvas: HTMLCanvasElement;
+  segmentEditor: HTMLInputElement;
   dbScaleCanvas: HTMLCanvasElement;
   freqScaleCanvas: HTMLCanvasElement;
 
   trackContainer: HTMLElement;
   tracksArea: HTMLElement;
-  labelContainer: HTMLElement;
+  segmentContainer: HTMLElement;
   timelineContainer: HTMLElement;
   scrollbarTrack: HTMLElement;
   scrollbarThumb: HTMLElement;
@@ -59,8 +59,35 @@ export interface DOMRefs {
   volumeSlider: HTMLInputElement;
   panSlider: HTMLInputElement;
 
-  labelSearch: HTMLInputElement | null;
-  labelCategoryFilter: HTMLSelectElement | null;
+  segmentSearch: HTMLInputElement | null;
+  segmentCategoryFilter: HTMLSelectElement | null;
+
+  // Speaker dialog
+  speakerDialog: HTMLElement;
+  speakerDialogClose: HTMLButtonElement;
+  speakersEnabled: HTMLInputElement;
+  speakerList: HTMLElement;
+  newSpeakerName: HTMLInputElement;
+  btnSpeakerAdd: HTMLButtonElement;
+  mergeSource: HTMLSelectElement;
+  mergeTarget: HTMLSelectElement;
+  btnSpeakerMerge: HTMLButtonElement;
+  btnAddSpeaker: HTMLButtonElement;
+  btnManageSpeakers: HTMLButtonElement;
+  speakerPills: HTMLElement;
+
+  // Export format grid
+  exportFormatGrid: HTMLElement;
+  tsvColumnsPanel: HTMLElement;
+
+  // Combine dialog
+  combineDialog: HTMLElement;
+  combineTrackList: HTMLElement;
+  combineLoop: HTMLInputElement;
+  combineSliders: HTMLElement;
+  combineCancel: HTMLButtonElement;
+  combinePreview: HTMLButtonElement;
+  combineConfirm: HTMLButtonElement;
 
   exportDialog: HTMLElement;
   exportCancel: HTMLButtonElement;
@@ -168,7 +195,7 @@ export function getDOMRefs(): DOMRefs {
     fileInput: $('#file-input') as HTMLInputElement,
     addTrackInput: $('#add-track-input') as HTMLInputElement,
     concatInput: $('#concat-input') as HTMLInputElement,
-    labelFileInput: $('#label-file-input') as HTMLInputElement,
+    segmentFileInput: $('#segment-file-input') as HTMLInputElement,
     projectFileInput: $('#project-file-input') as HTMLInputElement,
     dropZone: $('#drop-zone') as HTMLElement,
 
@@ -177,14 +204,14 @@ export function getDOMRefs(): DOMRefs {
     spectrogramCanvas: $('#spectrogram-canvas') as HTMLCanvasElement,
     selectionCanvas: $('#selection-canvas') as HTMLCanvasElement,
     cursorCanvas: $('#cursor-canvas') as HTMLCanvasElement,
-    labelCanvas: $('#label-canvas') as HTMLCanvasElement,
-    labelEditor: $('#label-editor') as HTMLInputElement,
+    segmentCanvas: $('#segment-canvas') as HTMLCanvasElement,
+    segmentEditor: $('#segment-editor') as HTMLInputElement,
     dbScaleCanvas: $('#db-scale-canvas') as HTMLCanvasElement,
     freqScaleCanvas: $('#freq-scale-canvas') as HTMLCanvasElement,
 
     trackContainer: $('#track-container') as HTMLElement,
     tracksArea: $('#tracks-area') as HTMLElement,
-    labelContainer: $('#label-container') as HTMLElement,
+    segmentContainer: $('#segment-container') as HTMLElement,
     timelineContainer: $('#timeline-container') as HTMLElement,
     scrollbarTrack: $('#scrollbar-track') as HTMLElement,
     scrollbarThumb: $('#scrollbar-thumb') as HTMLElement,
@@ -203,8 +230,35 @@ export function getDOMRefs(): DOMRefs {
     volumeSlider: $('#volume-slider') as HTMLInputElement,
     panSlider: $('#pan-slider') as HTMLInputElement,
 
-    labelSearch: $('#label-search') as HTMLInputElement | null,
-    labelCategoryFilter: $('#label-category-filter') as HTMLSelectElement | null,
+    segmentSearch: $('#segment-search') as HTMLInputElement | null,
+    segmentCategoryFilter: $('#segment-category-filter') as HTMLSelectElement | null,
+
+    // Speaker dialog
+    speakerDialog: $('#speaker-dialog') as HTMLElement,
+    speakerDialogClose: $('#speaker-dialog-close') as HTMLButtonElement,
+    speakersEnabled: $('#speakers-enabled') as HTMLInputElement,
+    speakerList: $('#speaker-list') as HTMLElement,
+    newSpeakerName: $('#new-speaker-name') as HTMLInputElement,
+    btnSpeakerAdd: $('#btn-speaker-add') as HTMLButtonElement,
+    mergeSource: $('#merge-source') as HTMLSelectElement,
+    mergeTarget: $('#merge-target') as HTMLSelectElement,
+    btnSpeakerMerge: $('#btn-speaker-merge') as HTMLButtonElement,
+    btnAddSpeaker: $('#btn-add-speaker') as HTMLButtonElement,
+    btnManageSpeakers: $('#btn-manage-speakers') as HTMLButtonElement,
+    speakerPills: $('#speaker-pills') as HTMLElement,
+
+    // Export format grid
+    exportFormatGrid: $('#export-format-grid') as HTMLElement,
+    tsvColumnsPanel: $('#tsv-columns-panel') as HTMLElement,
+
+    // Combine dialog
+    combineDialog: $('#combine-dialog') as HTMLElement,
+    combineTrackList: $('#combine-track-list') as HTMLElement,
+    combineLoop: $('#combine-loop') as HTMLInputElement,
+    combineSliders: $('#combine-sliders') as HTMLElement,
+    combineCancel: $('#combine-cancel') as HTMLButtonElement,
+    combinePreview: $('#combine-preview') as HTMLButtonElement,
+    combineConfirm: $('#combine-confirm') as HTMLButtonElement,
 
     exportDialog: $('#export-dialog') as HTMLElement,
     exportCancel: $('#export-cancel') as HTMLButtonElement,
