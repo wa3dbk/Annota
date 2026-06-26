@@ -2715,6 +2715,7 @@ function setupMenuBar(): void {
         { label: 'Mix and Render', action: mixAndRender },
         { separator: true },
         { label: 'Combine Tracks...', action: showCombineTracksDialog },
+        { label: 'Manage Speakers...', action: () => { renderSpeakerDialog(); dom.speakerDialog.style.display = 'flex'; } },
         { separator: true },
         { label: 'Add Segment', icon: Icons.label, shortcut: 'Ctrl+B', action: addSegment },
         { separator: true },
