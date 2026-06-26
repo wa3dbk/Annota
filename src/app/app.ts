@@ -8,7 +8,9 @@ import { WaveformRenderer } from '../waveform';
 import { SpectrogramRenderer } from '../spectrogram';
 import { TimeRuler } from '../timeline';
 import { SelectionManager } from '../selection';
-import { LabelTrack } from '../label-track';
+import { SegmentTrack } from '../segment-track';
+import { SpeakerManager } from '../speaker-manager';
+import { SpectrumAnalyzer } from '../analysis/spectrum';
 import { UndoManager } from '../undo';
 import { ProjectManager } from '../project';
 import { Clipboard } from '../clipboard';
@@ -28,7 +30,7 @@ import { ThemeManager } from '../ui/theme';
 import { AnalysisPanel } from '../ui/analysis-panel';
 import { getDOMRefs } from './dom-refs';
 import type { DOMRefs } from './dom-refs';
-import type { EQBand, ViewMode, Label, MenuItem, VideoDisplayMode } from '../types';
+import type { EQBand, ViewMode, Segment, MenuItem, VideoDisplayMode } from '../types';
 
 // ===== DOM Elements =====
 const dom = getDOMRefs();
@@ -40,7 +42,9 @@ const waveformRenderer = new WaveformRenderer(dom.waveformCanvas, viewport, audi
 const spectrogramRenderer = new SpectrogramRenderer(dom.spectrogramCanvas, viewport, audioEngine);
 const timeRuler = new TimeRuler(dom.timelineCanvas, viewport);
 const selectionManager = new SelectionManager(dom.selectionCanvas, dom.cursorCanvas, viewport);
-const labelTrack = new LabelTrack(dom.labelCanvas, dom.labelEditor, viewport);
+const speakerManager = new SpeakerManager();
+const segmentTrack = new SegmentTrack(dom.segmentCanvas, dom.segmentEditor, viewport, speakerManager);
+const spectrumAnalyzer = new SpectrumAnalyzer();
 const undoManager = new UndoManager();
 const projectManager = new ProjectManager();
 const clipboard = new Clipboard();
@@ -89,7 +93,7 @@ let youtubeApiLoaded: boolean = false;
 // ===== Theme Integration =====
 function applyThemeColors(): void {
   const colors = themeManager.colors;
-  labelTrack.setThemeColors(colors);
+  segmentTrack.setThemeColors(colors);
   waveformRenderer.themeColors = colors;
   spectrogramRenderer.themeColors = colors;
   timeRuler.themeColors = colors;
@@ -153,15 +157,15 @@ function addResizeHandle(row: HTMLElement): void {
   });
 }
 
-// Add resize handles to the main track and label rows
+// Add resize handles to the main track and segment rows
 addResizeHandle(document.getElementById('track-row')!);
-addResizeHandle(document.getElementById('label-row')!);
+addResizeHandle(document.getElementById('segment-row')!);
 
 // ===== Sizing =====
 function updateSizes(): void {
   const trackSize = getElementSize(dom.trackContainer);
   const timelineSize = getElementSize(dom.timelineContainer);
-  const labelSize = getElementSize(dom.labelContainer);
+  const segmentSize = getElementSize(dom.segmentContainer);
 
   viewport.setCanvasSize(trackSize.width, trackSize.height);
 
@@ -169,7 +173,7 @@ function updateSizes(): void {
   waveformRenderer.resize(trackSize.width, trackSize.height);
   spectrogramRenderer.resize(trackSize.width, trackSize.height);
   selectionManager.resize(trackSize.width, trackSize.height);
-  labelTrack.resize(labelSize.width, labelSize.height);
+  segmentTrack.resize(segmentSize.width, segmentSize.height);
 
   if (dom.dbScaleCanvas) {
     setupHiDPICanvas(dom.dbScaleCanvas, 40, trackSize.height);
@@ -203,7 +207,7 @@ function redrawAll(): void {
   drawAxisOverlays();
   selectionManager.drawSelection();
   selectionManager.drawCursor();
-  labelTrack.draw();
+  segmentTrack.draw();
 
   for (const t of extraTracks) {
     t.waveform.draw();
@@ -258,7 +262,7 @@ function startAnimLoop(): void {
       if (viewMode === 'waveform') waveformRenderer.draw();
       else spectrogramRenderer.draw();
       selectionManager.drawSelection();
-      labelTrack.draw();
+      segmentTrack.draw();
       for (const t2 of extraTracks) t2.waveform.draw();
       updateScrollbar();
       updateStatusBar();
@@ -310,7 +314,7 @@ function ytAnimTick(): void {
   if (viewMode === 'waveform') waveformRenderer.draw();
   else spectrogramRenderer.draw();
   selectionManager.drawSelection();
-  labelTrack.draw();
+  segmentTrack.draw();
   updateScrollbar();
   updateStatusBar();
 
@@ -433,7 +437,8 @@ function hideLoading(): void {
 function captureUndoState(actionName: string): void {
   undoManager.push(actionName, {
     audioBuffer: audioEngine.audioBuffer,
-    labels: labelTrack.labels,
+    segments: segmentTrack.segments.map(s => ({...s})),
+    speakers: speakerManager.speakers.map(s => ({...s})),
     cursorTime: selectionManager.cursorTime
   });
 }
@@ -444,7 +449,8 @@ function restoreFromSnapshot(snapshot: any): void {
   if (buf) {
     audioEngine.audioBuffer = buf;
   }
-  labelTrack.labels = snapshot.labels.map((l: Label) => ({ ...l }));
+  segmentTrack.segments = snapshot.segments ? snapshot.segments.map((s: Segment) => ({ ...s })) : [];
+  if (snapshot.speakers) speakerManager.speakers = snapshot.speakers;
   selectionManager.setCursor(snapshot.cursorTime);
   selectionManager.clearSelection();
   onBufferChanged(true);
@@ -871,7 +877,8 @@ function refreshAfterEffect(): void {
 dom.btnUndo.addEventListener('click', () => {
   const snapshot = undoManager.undo({
     audioBuffer: audioEngine.audioBuffer,
-    labels: labelTrack.labels,
+    segments: segmentTrack.segments.map(s => ({...s})),
+    speakers: speakerManager.speakers.map(s => ({...s})),
     cursorTime: selectionManager.cursorTime
   });
   restoreFromSnapshot(snapshot);
@@ -880,7 +887,8 @@ dom.btnUndo.addEventListener('click', () => {
 dom.btnRedo.addEventListener('click', () => {
   const snapshot = undoManager.redo({
     audioBuffer: audioEngine.audioBuffer,
-    labels: labelTrack.labels,
+    segments: segmentTrack.segments.map(s => ({...s})),
+    speakers: speakerManager.speakers.map(s => ({...s})),
     cursorTime: selectionManager.cursorTime
   });
   restoreFromSnapshot(snapshot);
@@ -1315,6 +1323,114 @@ dom.resampleConfirm.addEventListener('click', () => {
 dom.shortcutsClose.addEventListener('click', () => { dom.shortcutsDialog.style.display = 'none'; });
 dom.aboutClose.addEventListener('click', () => { dom.aboutDialog.style.display = 'none'; });
 
+// ===== Speaker Dialog =====
+dom.btnAddSpeaker.addEventListener('click', () => {
+  const name = prompt('Speaker name:');
+  if (name) {
+    speakerManager.addSpeaker(name.trim());
+    updateSpeakerPills();
+    redrawAll();
+  }
+});
+
+dom.btnManageSpeakers.addEventListener('click', () => {
+  renderSpeakerDialog();
+  dom.speakerDialog.style.display = 'flex';
+});
+
+dom.speakerDialogClose.addEventListener('click', () => {
+  dom.speakerDialog.style.display = 'none';
+});
+
+dom.btnSpeakerAdd.addEventListener('click', () => {
+  const name = dom.newSpeakerName.value.trim();
+  if (name) {
+    speakerManager.addSpeaker(name);
+    dom.newSpeakerName.value = '';
+    renderSpeakerDialog();
+    updateSpeakerPills();
+    redrawAll();
+  }
+});
+
+dom.speakersEnabled.addEventListener('change', () => {
+  speakerManager.enabled = dom.speakersEnabled.checked;
+  updateSpeakerPills();
+  redrawAll();
+});
+
+dom.btnSpeakerMerge.addEventListener('click', () => {
+  const sourceId = dom.mergeSource.value;
+  const targetId = dom.mergeTarget.value;
+  if (sourceId && targetId && sourceId !== targetId) {
+    speakerManager.mergeSpeakers(sourceId, targetId, segmentTrack.segments);
+    renderSpeakerDialog();
+    updateSpeakerPills();
+    redrawAll();
+  }
+});
+
+function renderSpeakerDialog(): void {
+  dom.speakersEnabled.checked = speakerManager.enabled;
+  const list = dom.speakerList;
+  list.innerHTML = '';
+  for (const speaker of speakerManager.speakers) {
+    const count = speakerManager.getSegmentCount(speaker.id, segmentTrack.segments);
+    const row = document.createElement('div');
+    row.className = 'speaker-row';
+    row.innerHTML = `
+      <div class="speaker-color-dot" style="background:${speaker.color}" title="Click to change color"></div>
+      <span class="speaker-name">${speaker.name}</span>
+      <span class="speaker-count">${count} segments</span>
+      <div class="speaker-actions">
+        <button data-action="rename" data-id="${speaker.id}">Rename</button>
+        <button data-action="delete" data-id="${speaker.id}" class="danger">Delete</button>
+      </div>
+    `;
+    list.appendChild(row);
+  }
+  list.querySelectorAll('button[data-action]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const action = btn.getAttribute('data-action');
+      const id = btn.getAttribute('data-id')!;
+      if (action === 'rename') {
+        const newName = prompt('New name:', speakerManager.getSpeakerById(id)?.name);
+        if (newName) { speakerManager.renameSpeaker(id, newName.trim()); renderSpeakerDialog(); updateSpeakerPills(); redrawAll(); }
+      } else if (action === 'delete') {
+        speakerManager.removeSpeaker(id, segmentTrack.segments);
+        renderSpeakerDialog(); updateSpeakerPills(); redrawAll();
+      }
+    });
+  });
+  list.querySelectorAll('.speaker-color-dot').forEach((dot, i) => {
+    dot.addEventListener('click', () => {
+      const speaker = speakerManager.speakers[i];
+      const input = document.createElement('input');
+      input.type = 'color';
+      input.value = speaker.color;
+      input.addEventListener('input', () => {
+        speakerManager.recolorSpeaker(speaker.id, input.value);
+        (dot as HTMLElement).style.background = input.value;
+        updateSpeakerPills(); redrawAll();
+      });
+      input.click();
+    });
+  });
+  dom.mergeSource.innerHTML = speakerManager.speakers.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+  dom.mergeTarget.innerHTML = speakerManager.speakers.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+}
+
+function updateSpeakerPills(): void {
+  const pills = dom.speakerPills;
+  if (!speakerManager.enabled || speakerManager.speakers.length === 0) {
+    pills.innerHTML = '';
+    return;
+  }
+  pills.innerHTML = speakerManager.speakers.map(s =>
+    `<span class="speaker-pill" style="background:${s.color}">${s.name}</span>`
+  ).join('');
+}
+
 // ===== Concatenate File =====
 dom.concatInput.addEventListener('change', async (e) => {
   const file = (e.target as HTMLInputElement).files![0];
@@ -1576,7 +1692,9 @@ function getProjectState(): any {
       length: audioEngine.totalSamples,
       channels
     },
-    labels: labelTrack.labels,
+    segments: segmentTrack.segments.map(s => ({ ...s })),
+    speakers: speakerManager.speakers.map(s => ({ ...s })),
+    speakersEnabled: speakerManager.enabled,
     viewport: {
       samplesPerPixel: viewport.samplesPerPixel,
       scrollSamples: viewport.scrollSamples
@@ -1647,9 +1765,24 @@ async function loadProject(): Promise<void> {
       audioEngine.audioBuffer = buf;
     }
 
-    if (data.labels) {
-      labelTrack.labels = data.labels.map((l: any) => ({ ...l, id: l.id || uniqueId('lbl') }));
+    // Migration from old labels format
+    if (data.labels && !data.segments) {
+      data.segments = data.labels.map((l: any) => ({
+        id: l.id || uniqueId('seg'),
+        start: l.start,
+        end: l.end || l.start + 0.01,
+        text: l.text || '',
+        speakerId: null,
+        category: l.category || 'speech'
+      }));
     }
+    if (data.speakers) {
+      speakerManager.speakers = data.speakers;
+    }
+    if (data.speakersEnabled !== undefined) {
+      speakerManager.enabled = data.speakersEnabled;
+    }
+    segmentTrack.segments = data.segments || [];
 
     if (data.viewport) {
       viewport.samplesPerPixel = data.viewport.samplesPerPixel;
@@ -1789,97 +1922,95 @@ dom.snapToggle.addEventListener('change', (e) => {
   snapEnabled = (e.target as HTMLInputElement).checked;
 });
 
-// ===== Label Search/Filter =====
-if (dom.labelSearch) {
-  dom.labelSearch.addEventListener('input', (e) => {
-    labelTrack.filterText = (e.target as HTMLInputElement).value;
-    labelTrack.draw();
+// ===== Segment Search/Filter =====
+if (dom.segmentSearch) {
+  dom.segmentSearch.addEventListener('input', (e) => {
+    segmentTrack.filterText = (e.target as HTMLInputElement).value;
+    segmentTrack.draw();
   });
 }
 
-if (dom.labelCategoryFilter) {
-  dom.labelCategoryFilter.addEventListener('change', (e) => {
-    labelTrack.filterCategory = (e.target as HTMLSelectElement).value;
-    labelTrack.draw();
+if (dom.segmentCategoryFilter) {
+  dom.segmentCategoryFilter.addEventListener('change', (e) => {
+    segmentTrack.filterCategory = (e.target as HTMLSelectElement).value;
+    segmentTrack.draw();
   });
 }
 
-// ===== Export Labels =====
-function openExportLabelsDialog(): void {
-  if (labelTrack.labels.length === 0) { alert('No labels to export.'); return; }
+// ===== Export Segments =====
+function openExportSegmentsDialog(): void {
+  if (segmentTrack.segments.length === 0) { alert('No segments to export.'); return; }
   dom.exportDialog.style.display = 'flex';
 }
 
 dom.exportCancel.addEventListener('click', () => { dom.exportDialog.style.display = 'none'; });
 
+let selectedExportFmt = 'tsv';
+dom.exportFormatGrid.querySelectorAll('.export-fmt-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    dom.exportFormatGrid.querySelectorAll('.export-fmt-btn').forEach(b => b.classList.remove('selected'));
+    btn.classList.add('selected');
+    selectedExportFmt = btn.getAttribute('data-fmt')!;
+    dom.tsvColumnsPanel.style.display = selectedExportFmt === 'tsv' ? 'block' : 'none';
+  });
+});
+
 dom.exportConfirm.addEventListener('click', () => {
-  const fmt = (document.querySelector('input[name="export-fmt"]:checked') as HTMLInputElement).value;
-  let content: string, filename: string, mimeType: string;
-  switch (fmt) {
-    case 'audacity':
-      content = labelTrack.exportAudacity();
-      filename = 'labels.txt';
-      mimeType = 'text/plain';
+  let content = '';
+  let ext = '.txt';
+  switch (selectedExportFmt) {
+    case 'audacity': content = segmentTrack.exportAudacity(); ext = '.txt'; break;
+    case 'json': content = segmentTrack.exportJSON(); ext = '.json'; break;
+    case 'srt': content = segmentTrack.exportSRT(); ext = '.srt'; break;
+    case 'vtt': content = segmentTrack.exportVTT(); ext = '.vtt'; break;
+    case 'elan': content = segmentTrack.exportELAN(); ext = '.xml'; break;
+    case 'stm': content = segmentTrack.exportSTM(); ext = '.stm'; break;
+    case 'tsv': {
+      const checks = dom.tsvColumnsPanel.querySelectorAll('input[type="checkbox"]:checked');
+      const cols = [...checks].map(c => (c as HTMLInputElement).value);
+      content = segmentTrack.exportTSV(cols);
+      ext = '.tsv';
       break;
-    case 'json':
-      content = labelTrack.exportJSON();
-      filename = 'labels.json';
-      mimeType = 'application/json';
-      break;
-    case 'srt':
-      content = labelTrack.exportSRT();
-      filename = 'labels.srt';
-      mimeType = 'text/plain';
-      break;
-    case 'vtt':
-      content = labelTrack.exportVTT();
-      filename = 'labels.vtt';
-      mimeType = 'text/plain';
-      break;
-    case 'elan':
-      content = labelTrack.exportELAN();
-      filename = 'labels.xml';
-      mimeType = 'application/xml';
-      break;
-    default:
-      content = labelTrack.exportAudacity();
-      filename = 'labels.txt';
-      mimeType = 'text/plain';
+    }
   }
-  downloadBlob(new Blob([content], { type: mimeType }), filename);
+  const blob = new Blob([content], { type: 'text/plain' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'segments' + ext;
+  a.click();
   dom.exportDialog.style.display = 'none';
 });
 
-// ===== Import Labels =====
-function importLabels(): void {
-  dom.labelFileInput.click();
+// ===== Import Segments =====
+function importSegments(): void {
+  dom.segmentFileInput.click();
 }
 
-dom.labelFileInput.addEventListener('change', async (e) => {
+dom.segmentFileInput.addEventListener('change', async (e) => {
   const file = (e.target as HTMLInputElement).files![0];
   if (!file) return;
   try {
-    captureUndoState('Import labels');
+    captureUndoState('Import segments');
     const text = await file.text();
-    labelTrack.importAuto(text);
-    labelTrack.draw();
+    segmentTrack.importAuto(text);
+    segmentTrack.draw();
   } catch (err: any) {
-    alert('Failed to import labels: ' + err.message);
+    alert('Failed to import segments: ' + err.message);
   }
-  dom.labelFileInput.value = '';
+  dom.segmentFileInput.value = '';
 });
 
-// ===== Add Label =====
-function addLabel(): void {
+// ===== Add Segment =====
+function addSegment(): void {
   if (!isLoaded) return;
-  captureUndoState('Add label');
+  captureUndoState('Add segment');
   const sel = selectionManager.selectionRange;
   if (sel) {
-    labelTrack.addRegionLabel(sel.start, sel.end);
+    segmentTrack.addSegment(sel.start, sel.end);
   } else {
-    labelTrack.addPointLabel(selectionManager.cursorTime);
+    segmentTrack.addSegment(selectionManager.cursorTime, selectionManager.cursorTime + 0.01);
   }
-  labelTrack.draw();
+  segmentTrack.draw();
 }
 
 // ===== Analysis Actions =====
@@ -1965,6 +2096,24 @@ function showMFCCAnalysis(): void {
   });
 }
 
+function showSpectrumAnalysis(): void {
+  const sel = selectionManager.selectionRange;
+  if (!sel || !audioEngine.audioBuffer) {
+    alert('Select a region first.');
+    return;
+  }
+  const sr = audioEngine.sampleRate;
+  const startSample = Math.round(sel.start * sr);
+  const endSample = Math.round(sel.end * sr);
+  const mono = audioEngine.getMonoData().slice(startSample, endSample);
+
+  const data = spectrumAnalyzer.compute(mono, sr);
+
+  analysisPanel.show('Spectrum', [], { info: `${sr} Hz, ${mono.length} samples` });
+  const logScale = true;
+  spectrumAnalyzer.render(analysisPanel._canvas, data, logScale, themeManager.colors);
+}
+
 // ===== Export Waveform as Image =====
 function exportWaveformImage(): void {
   if (!isLoaded) return;
@@ -1997,9 +2146,10 @@ function newProject(): void {
     t.row.remove();
   }
   extraTracks.length = 0;
-  labelTrack.labels = [];
-  labelTrack.selectedLabelId = null;
-  labelTrack.selectedLabelIds.clear();
+  segmentTrack.segments = [];
+  segmentTrack.selectedSegmentId = null;
+  segmentTrack.selectedSegmentIds.clear();
+  speakerManager.speakers = [];
   selectionManager.clearSelection();
   selectionManager.setCursor(0);
   undoManager.clear();
@@ -2116,10 +2266,10 @@ function setupMenuBar(): void {
         { label: 'Import Audio', icon: Icons.importFile, shortcut: 'Ctrl+O', action: () => dom.fileInput.click() },
         { label: 'Load from URL...', icon: Icons.url, shortcut: 'Ctrl+U', action: openURLDialog },
         { label: 'Load YouTube Video...', icon: Icons.youtube, action: openYouTubeDialog },
-        { label: 'Import Labels', action: importLabels },
+        { label: 'Import Segments', action: importSegments },
         { separator: true },
         { label: 'Export Audio', icon: Icons.exportFile, action: openExportAudioDialog },
-        { label: 'Export Labels', action: openExportLabelsDialog },
+        { label: 'Export Segments', action: openExportSegmentsDialog },
         { label: 'Export Mixdown', action: () => { if (isLoaded) dom.mixdownDialog.style.display = 'flex'; } },
         { label: 'Export Waveform Image', icon: Icons.image, action: exportWaveformImage },
         { separator: true },
@@ -2152,7 +2302,7 @@ function setupMenuBar(): void {
         { separator: true },
         { label: 'Separate Channels', action: separateChannels },
         { separator: true },
-        { label: 'Add Label', icon: Icons.label, shortcut: 'Ctrl+B', action: addLabel },
+        { label: 'Add Segment', icon: Icons.label, shortcut: 'Ctrl+B', action: addSegment },
         { separator: true },
         { label: 'Resample Track...', action: () => { if (isLoaded) dom.resampleDialog.style.display = 'flex'; } },
       ]
@@ -2189,6 +2339,7 @@ function setupMenuBar(): void {
     {
       label: 'Analysis',
       items: [
+        { label: 'Spectrum', icon: Icons.spectrum, action: showSpectrumAnalysis },
         { label: 'Spectrogram', icon: Icons.spectrum, action: showSpectrogramAnalysis },
         { label: 'Filterbank (Mel)', action: showFilterbankAnalysis },
         { label: 'MFCC', action: showMFCCAnalysis },
@@ -2223,9 +2374,10 @@ function getWaveformContextItems(): MenuItem[] {
       { label: 'Export Segment', icon: Icons.exportFile, action: openExportAudioDialog },
       { label: 'Export Waveform Image', icon: Icons.image, action: exportWaveformImage },
       { separator: true },
-      { label: 'Add Label', icon: Icons.label, action: addLabel },
+      { label: 'Add Segment', icon: Icons.label, action: addSegment },
       { separator: true },
       { label: 'Analysis', submenu: [
+        { label: 'Spectrum', action: showSpectrumAnalysis },
         { label: 'Spectrogram', action: showSpectrogramAnalysis },
         { label: 'Filterbank (Mel)', action: showFilterbankAnalysis },
         { label: 'MFCC', action: showMFCCAnalysis },
@@ -2236,67 +2388,108 @@ function getWaveformContextItems(): MenuItem[] {
       { label: 'Paste', icon: Icons.paste, shortcut: 'Ctrl+V', action: doPaste, disabled: !clipboard.hasAudio },
       { label: 'Select All', icon: Icons.selectAll, shortcut: 'Ctrl+A', action: doSelectAll },
       { separator: true },
-      { label: 'Add Label', icon: Icons.label, action: addLabel },
+      { label: 'Add Segment', icon: Icons.label, action: addSegment },
     ];
   }
 }
 
-function getLabelContextItems(hitLabel: Label | null): MenuItem[] {
-  const selectedLabels = labelTrack.getSelectedLabels();
-  const hasSelectedLabels = selectedLabels.length > 0;
+function getSegmentContextItems(hitSeg: Segment | null): MenuItem[] {
+  const selectedSegs = segmentTrack.getSelectedSegments();
+  const hasSelectedSegs = selectedSegs.length > 0;
 
-  if (hitLabel || hasSelectedLabels) {
-    return [
-      { label: 'Copy Label', icon: Icons.copy, action: () => {
-        const labels = hasSelectedLabels ? selectedLabels : [hitLabel!];
-        clipboard.copyLabels(labels);
+  if (hitSeg || hasSelectedSegs) {
+    const items: MenuItem[] = [
+      { label: 'Copy Segment', icon: Icons.copy, action: () => {
+        const segs = hasSelectedSegs ? selectedSegs : [hitSeg!];
+        clipboard.copySegments(segs);
       }},
-      { label: 'Cut Label', icon: Icons.cut, action: () => {
-        captureUndoState('Cut labels');
-        const ids = hasSelectedLabels
-          ? [...labelTrack.selectedLabelIds]
-          : [hitLabel!.id];
-        clipboard.cutLabels(labelTrack, ids);
-        labelTrack.draw();
+      { label: 'Cut Segment', icon: Icons.cut, action: () => {
+        captureUndoState('Cut segments');
+        const ids = hasSelectedSegs
+          ? [...segmentTrack.selectedSegmentIds]
+          : [hitSeg!.id];
+        clipboard.cutSegments(segmentTrack, ids);
+        segmentTrack.draw();
       }},
-      { label: 'Delete Label', icon: Icons.trash, action: () => {
-        captureUndoState('Delete labels');
-        labelTrack.removeSelected();
-        labelTrack.draw();
+      { label: 'Delete Segment', icon: Icons.trash, action: () => {
+        captureUndoState('Delete segments');
+        segmentTrack.removeSelected();
+        segmentTrack.draw();
       }},
       { separator: true },
-      { label: 'Set Category', submenu: Object.entries(labelTrack.categories).map(([key, cat]) => ({
-        label: (cat as any).label,
-        action: () => {
-          captureUndoState('Set category');
-          const labels = hasSelectedLabels ? selectedLabels : [hitLabel!];
-          for (const l of labels) {
-            l.category = key;
-          }
-          labelTrack.draw();
-        }
-      }))},
-      { separator: true },
-      { label: 'Export Segment Audio', icon: Icons.exportFile, action: () => {
-        const label = hitLabel || selectedLabels[0];
-        if (label && label.type === 'region') {
-          const segment = audioEngine.extractSegment(label.start, label.end);
-          if (segment) {
-            const blob = AudioEngine.encodeWAV(segment);
-            downloadBlob(blob, (label.text || 'segment') + '.wav');
-          }
-        }
-      }},
     ];
+
+    // Split at cursor
+    if (segmentTrack.selectedSegmentId) {
+      items.push({ label: 'Split at Cursor', shortcut: 'Ctrl+T', action: () => {
+        captureUndoState('Split segment');
+        segmentTrack.splitAtCursor(segmentTrack.selectedSegmentId!, selectionManager.cursorTime);
+        redrawAll();
+      }});
+    }
+
+    // Merge segments
+    if (segmentTrack.selectedSegmentIds.size === 2) {
+      const ids = [...segmentTrack.selectedSegmentIds];
+      items.push({ label: 'Merge Segments', action: () => {
+        captureUndoState('Merge segments');
+        segmentTrack.mergeSegments(ids[0], ids[1]);
+        redrawAll();
+      }});
+    }
+
+    items.push({ separator: true });
+
+    // Assign speaker submenu
+    if (speakerManager.enabled && segmentTrack.selectedSegmentId) {
+      const speakerSubmenu: MenuItem[] = speakerManager.speakers.map(s => ({
+        label: s.name,
+        action: () => {
+          const seg = segmentTrack.getSegmentById(segmentTrack.selectedSegmentId!);
+          if (seg) { seg.speakerId = s.id; redrawAll(); }
+        }
+      }));
+      speakerSubmenu.push({ separator: true });
+      speakerSubmenu.push({ label: 'No speaker', action: () => {
+        const seg = segmentTrack.getSegmentById(segmentTrack.selectedSegmentId!);
+        if (seg) { seg.speakerId = null; redrawAll(); }
+      }});
+      items.push({ label: 'Assign Speaker', submenu: speakerSubmenu });
+    }
+
+    items.push({ label: 'Set Category', submenu: Object.entries(segmentTrack.categories).map(([key, cat]) => ({
+      label: (cat as any).label,
+      action: () => {
+        captureUndoState('Set category');
+        const segs = hasSelectedSegs ? selectedSegs : [hitSeg!];
+        for (const s of segs) {
+          s.category = key;
+        }
+        segmentTrack.draw();
+      }
+    }))});
+    items.push({ separator: true });
+    items.push({ label: 'Export Segment Audio', icon: Icons.exportFile, action: () => {
+      const seg = hitSeg || selectedSegs[0];
+      if (seg) {
+        const audioSeg = audioEngine.extractSegment(seg.start, seg.end);
+        if (audioSeg) {
+          const blob = AudioEngine.encodeWAV(audioSeg);
+          downloadBlob(blob, (seg.text || 'segment') + '.wav');
+        }
+      }
+    }});
+
+    return items;
   } else {
     return [
-      { label: 'Add Label', icon: Icons.label, action: addLabel },
-      { label: 'Paste Label', icon: Icons.paste, action: () => {
-        if (!clipboard.hasLabels) return;
-        captureUndoState('Paste labels');
-        clipboard.pasteLabels(labelTrack, selectionManager.cursorTime);
-        labelTrack.draw();
-      }, disabled: !clipboard.hasLabels },
+      { label: 'Add Segment', icon: Icons.label, action: addSegment },
+      { label: 'Paste Segment', icon: Icons.paste, action: () => {
+        if (!clipboard.hasSegments) return;
+        captureUndoState('Paste segments');
+        clipboard.pasteSegments(segmentTrack, selectionManager.cursorTime);
+        segmentTrack.draw();
+      }, disabled: !clipboard.hasSegments },
     ];
   }
 }
@@ -2308,15 +2501,15 @@ dom.trackContainer.addEventListener('contextmenu', (e) => {
   contextMenu.show(e.clientX, e.clientY, getWaveformContextItems());
 });
 
-// Right-click on label area
-dom.labelContainer.addEventListener('contextmenu', (e) => {
+// Right-click on segment area
+dom.segmentContainer.addEventListener('contextmenu', (e) => {
   if (!isLoaded) return;
   e.preventDefault();
-  const rect = dom.labelContainer.getBoundingClientRect();
+  const rect = dom.segmentContainer.getBoundingClientRect();
   const px = e.clientX - rect.left;
   const py = e.clientY - rect.top;
-  const hit = labelTrack.hitTest(px, py);
-  contextMenu.show(e.clientX, e.clientY, getLabelContextItems(hit.label));
+  const hit = segmentTrack.hitTest(px, py);
+  contextMenu.show(e.clientX, e.clientY, getSegmentContextItems(hit.segment));
 });
 
 // ===== Timeline Click-to-Seek =====
@@ -2374,10 +2567,10 @@ document.addEventListener('mousemove', (e) => {
     updateStatusBar();
     updateEditButtons();
   }
-  if (labelTrack._isDragging) {
-    const rect = dom.labelContainer.getBoundingClientRect();
-    labelTrack.onMouseMove(e, rect);
-    labelTrack.draw();
+  if (segmentTrack._isDragging) {
+    const rect = dom.segmentContainer.getBoundingClientRect();
+    segmentTrack.onMouseMove(e, rect);
+    segmentTrack.draw();
   }
 });
 
@@ -2392,33 +2585,33 @@ document.addEventListener('mouseup', (e) => {
     }
     redrawAll();
   }
-  if (labelTrack._isDragging) {
-    const rect = dom.labelContainer.getBoundingClientRect();
-    labelTrack.onMouseUp(e, rect);
-    labelTrack.draw();
+  if (segmentTrack._isDragging) {
+    const rect = dom.segmentContainer.getBoundingClientRect();
+    segmentTrack.onMouseUp(e, rect);
+    segmentTrack.draw();
   }
 });
 
-// ===== Label Canvas Events =====
-dom.labelContainer.addEventListener('mousedown', (e) => {
+// ===== Segment Canvas Events =====
+dom.segmentContainer.addEventListener('mousedown', (e) => {
   if (e.button === 2) return;
   if (!isLoaded) return;
-  const rect = dom.labelContainer.getBoundingClientRect();
-  labelTrack.onMouseDown(e, rect);
-  labelTrack.draw();
+  const rect = dom.segmentContainer.getBoundingClientRect();
+  segmentTrack.onMouseDown(e, rect);
+  segmentTrack.draw();
 });
 
-dom.labelContainer.addEventListener('dblclick', (e) => {
+dom.segmentContainer.addEventListener('dblclick', (e) => {
   if (!isLoaded) return;
-  const rect = dom.labelContainer.getBoundingClientRect();
-  labelTrack.onDoubleClick(e, rect);
-  labelTrack.draw();
+  const rect = dom.segmentContainer.getBoundingClientRect();
+  segmentTrack.onDoubleClick(e, rect);
+  segmentTrack.draw();
 });
 
-dom.labelContainer.addEventListener('mousemove', (e) => {
-  if (!isLoaded || labelTrack._isDragging) return;
-  const rect = dom.labelContainer.getBoundingClientRect();
-  labelTrack.onMouseMove(e, rect);
+dom.segmentContainer.addEventListener('mousemove', (e) => {
+  if (!isLoaded || segmentTrack._isDragging) return;
+  const rect = dom.segmentContainer.getBoundingClientRect();
+  segmentTrack.onMouseMove(e, rect);
 });
 
 // ===== Scroll: Wheel =====
@@ -2444,7 +2637,7 @@ function handleWheel(e: WheelEvent): void {
 
 dom.trackContainer.addEventListener('wheel', handleWheel, { passive: false });
 dom.timelineContainer.addEventListener('wheel', handleWheel, { passive: false });
-dom.labelContainer.addEventListener('wheel', handleWheel, { passive: false });
+dom.segmentContainer.addEventListener('wheel', handleWheel, { passive: false });
 
 // ===== Scrollbar =====
 let scrollbarDragging = false;
@@ -2482,7 +2675,7 @@ document.addEventListener('mouseup', () => { scrollbarDragging = false; });
 
 // ===== Keyboard Shortcuts =====
 document.addEventListener('keydown', (e) => {
-  if (labelTrack._isEditing) return;
+  if (segmentTrack._isEditing) return;
   if ((e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'TEXTAREA' || (e.target as HTMLElement).tagName === 'SELECT') return;
 
   const isCtrl = e.ctrlKey || e.metaKey;
@@ -2513,7 +2706,7 @@ document.addEventListener('keydown', (e) => {
       if (isCtrl) { e.preventDefault(); dom.fileInput.click(); }
       break;
     case 'b':
-      if (isCtrl) { e.preventDefault(); addLabel(); }
+      if (isCtrl) { e.preventDefault(); addSegment(); }
       break;
     case 'x':
       if (isCtrl) { e.preventDefault(); doCut(); }
@@ -2549,6 +2742,14 @@ document.addEventListener('keydown', (e) => {
     case 's':
       if (isCtrl) { e.preventDefault(); saveProject(); }
       break;
+    case 't':
+      if (isCtrl && segmentTrack.selectedSegmentId) {
+        e.preventDefault();
+        captureUndoState('Split segment');
+        segmentTrack.splitAtCursor(segmentTrack.selectedSegmentId, selectionManager.cursorTime);
+        redrawAll();
+      }
+      break;
     case 'm':
       if (isLoaded && !isCtrl) {
         dom.btnMute.click();
@@ -2565,6 +2766,7 @@ document.addEventListener('keydown', (e) => {
       if (dom.resampleDialog.style.display !== 'none') { dom.resampleDialog.style.display = 'none'; break; }
       if (dom.shortcutsDialog.style.display !== 'none') { dom.shortcutsDialog.style.display = 'none'; break; }
       if (dom.aboutDialog.style.display !== 'none') { dom.aboutDialog.style.display = 'none'; break; }
+      if (dom.speakerDialog.style.display !== 'none') { dom.speakerDialog.style.display = 'none'; break; }
       if (dom.exportDialog.style.display !== 'none') { dom.exportDialog.style.display = 'none'; break; }
       if (dom.exportAudioDialog.style.display !== 'none') { dom.exportAudioDialog.style.display = 'none'; break; }
       if (dom.gainDialog.style.display !== 'none') { dom.gainDialog.style.display = 'none'; break; }
@@ -2572,24 +2774,24 @@ document.addEventListener('keydown', (e) => {
       if (dom.urlDialog.style.display !== 'none') { dom.urlDialog.style.display = 'none'; break; }
       if (dom.youtubeDialog.style.display !== 'none') { dom.youtubeDialog.style.display = 'none'; break; }
       selectionManager.clearSelection();
-      labelTrack.selectedLabelId = null;
-      labelTrack.selectedLabelIds.clear();
+      segmentTrack.selectedSegmentId = null;
+      segmentTrack.selectedSegmentIds.clear();
       redrawAll();
       break;
     case 'Delete':
-      if (labelTrack.selectedLabelIds.size > 0 || labelTrack.selectedLabelId) {
-        captureUndoState('Delete label');
-        labelTrack.removeSelected();
-        labelTrack.draw();
+      if (segmentTrack.selectedSegmentIds.size > 0 || segmentTrack.selectedSegmentId) {
+        captureUndoState('Delete segment');
+        segmentTrack.removeSelected();
+        segmentTrack.draw();
       } else if (selectionManager.hasSelection && isLoaded) {
         doDelete();
       }
       break;
     case 'Backspace':
-      if (labelTrack.selectedLabelIds.size > 0 || labelTrack.selectedLabelId) {
-        captureUndoState('Delete label');
-        labelTrack.removeSelected();
-        labelTrack.draw();
+      if (segmentTrack.selectedSegmentIds.size > 0 || segmentTrack.selectedSegmentId) {
+        captureUndoState('Delete segment');
+        segmentTrack.removeSelected();
+        segmentTrack.draw();
       }
       break;
     case 'Home':
@@ -2711,11 +2913,11 @@ document.addEventListener('drop', (e) => {
       loadVideoFile(file);
     } else if (file.type.startsWith('audio/') || /\.(wav|mp3|ogg|flac|m4a|aac|webm)$/i.test(file.name)) {
       loadAudioFile(file);
-    } else if (/\.(txt|json|srt|vtt|xml)$/i.test(file.name)) {
+    } else if (/\.(txt|json|srt|vtt|xml|tsv|stm)$/i.test(file.name)) {
       file.text().then(text => {
-        captureUndoState('Import labels');
-        labelTrack.importAuto(text);
-        labelTrack.draw();
+        captureUndoState('Import segments');
+        segmentTrack.importAuto(text);
+        segmentTrack.draw();
       });
     }
   }

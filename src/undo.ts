@@ -1,18 +1,20 @@
 // ===== Undo/Redo Manager =====
 // Snapshots audio buffer + label state before destructive actions
 
-import type { Label, SerializedAudioBuffer } from './types';
+import type { Segment, Speaker, SerializedAudioBuffer } from './types';
 
 interface UndoEntry {
   name: string;
   audioBuffer: SerializedAudioBuffer | null;
-  labels: Label[];
+  segments: Segment[];
+  speakers?: Speaker[];
   cursorTime: number;
 }
 
 interface UndoableState {
   audioBuffer: AudioBuffer | null;
-  labels: Label[];
+  segments: Segment[];
+  speakers?: Speaker[];
   cursorTime: number;
 }
 
@@ -33,7 +35,8 @@ export class UndoManager {
     this.undoStack.push({
       name: actionName,
       audioBuffer: this._cloneBuffer(state.audioBuffer),
-      labels: JSON.parse(JSON.stringify(state.labels)),
+      segments: JSON.parse(JSON.stringify(state.segments)),
+      speakers: state.speakers ? JSON.parse(JSON.stringify(state.speakers)) : undefined,
       cursorTime: state.cursorTime
     });
     while (this.undoStack.length > this.maxHistory) {
@@ -48,7 +51,8 @@ export class UndoManager {
     this.redoStack.push({
       name: 'redo',
       audioBuffer: this._cloneBuffer(currentState.audioBuffer),
-      labels: JSON.parse(JSON.stringify(currentState.labels)),
+      segments: JSON.parse(JSON.stringify(currentState.segments)),
+      speakers: currentState.speakers ? JSON.parse(JSON.stringify(currentState.speakers)) : undefined,
       cursorTime: currentState.cursorTime
     });
     const snapshot = this.undoStack.pop()!;
@@ -61,7 +65,8 @@ export class UndoManager {
     this.undoStack.push({
       name: 'redo-reverse',
       audioBuffer: this._cloneBuffer(currentState.audioBuffer),
-      labels: JSON.parse(JSON.stringify(currentState.labels)),
+      segments: JSON.parse(JSON.stringify(currentState.segments)),
+      speakers: currentState.speakers ? JSON.parse(JSON.stringify(currentState.speakers)) : undefined,
       cursorTime: currentState.cursorTime
     });
     const snapshot = this.redoStack.pop()!;

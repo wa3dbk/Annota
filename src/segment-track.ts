@@ -738,6 +738,19 @@ ${annotations.join('\n')}
     this.selectedSegmentIds.clear();
   }
 
+  importAuto(text: string): void {
+    text = text.trim();
+    if (text.startsWith('[') || text.startsWith('{')) {
+      this.importJSON(text);
+    } else if (text.startsWith('WEBVTT')) {
+      this.importVTT(text);
+    } else if (text.includes('-->') && /^\d+\s*\n/.test(text)) {
+      this.importSRT(text);
+    } else {
+      this.importAudacity(text);
+    }
+  }
+
   // ===== Time Format Helpers =====
 
   private _formatSRTTime(seconds: number): string {
