@@ -2499,9 +2499,169 @@ function showCombineStereoDialog(): void {
 }
 
 function showCombineTracksDialog(): void {
-  // TODO: wired in Task 12
-  alert('Combine Tracks — coming soon');
+  if (extraTracks.length === 0) {
+    alert('Add at least one extra track first (Tracks → Add Audio Track).');
+    return;
+  }
+
+  const trackListEl = dom.combineTrackList;
+  trackListEl.innerHTML = '';
+
+  const allTracks = [
+    { id: 'main', name: 'Audio (main)', info: `${audioEngine.sampleRate}Hz ${audioEngine.channels}ch`, duration: audioEngine.duration },
+    ...extraTracks.map(t => ({
+      id: String(t.id), name: t.name,
+      info: `${t.engine.sampleRate}Hz ${t.engine.channels}ch`,
+      duration: t.engine.duration
+    }))
+  ];
+
+  for (const t of allTracks) {
+    const row = document.createElement('div');
+    row.className = 'combine-track-row';
+    row.innerHTML = `
+      <input type="checkbox" data-track-id="${t.id}" ${t.id === 'main' ? 'checked disabled' : 'checked'}>
+      <span class="combine-track-name">${t.name} — ${formatTime(t.duration, 1)}</span>
+      <span class="combine-track-info">${t.info}</span>
+    `;
+    trackListEl.appendChild(row);
+  }
+
+  const slidersEl = dom.combineSliders;
+  slidersEl.innerHTML = '';
+  for (const t of allTracks) {
+    const row = document.createElement('div');
+    row.className = 'combine-slider-row';
+    row.innerHTML = `
+      <span>${t.name.length > 15 ? t.name.slice(0, 15) + '...' : t.name}</span>
+      <input type="range" min="0" max="100" value="${t.id === 'main' ? 80 : 20}" data-track-id="${t.id}">
+      <span class="combine-pct">${t.id === 'main' ? '80' : '20'}%</span>
+    `;
+    const slider = row.querySelector('input[type="range"]') as HTMLInputElement;
+    const pct = row.querySelector('.combine-pct')!;
+    slider.addEventListener('input', () => { pct.textContent = slider.value + '%'; });
+    slidersEl.appendChild(row);
+  }
+
+  dom.combineDialog.style.display = 'flex';
 }
+
+// Output mode toggle
+document.querySelectorAll('.combine-output-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.combine-output-btn').forEach(b => b.classList.remove('selected'));
+    btn.classList.add('selected');
+  });
+});
+
+dom.combineCancel.addEventListener('click', () => { dom.combineDialog.style.display = 'none'; });
+
+dom.combinePreview.addEventListener('click', () => {
+  dom.combineSliders.querySelectorAll('input[type="range"]').forEach(slider => {
+    const id = (slider as HTMLInputElement).getAttribute('data-track-id');
+    const vol = parseInt((slider as HTMLInputElement).value) / 100;
+    if (id === 'main') {
+      audioEngine.setVolume(vol);
+    } else {
+      const track = extraTracks.find(t => String(t.id) === id);
+      if (track) track.engine.setVolume(vol);
+    }
+  });
+  audioEngine.play(0);
+  for (const t of extraTracks) { if (!t.muted) t.engine.play(0); }
+  startAnimLoop();
+});
+
+dom.combineConfirm.addEventListener('click', () => {
+  captureUndoState('Combine tracks');
+
+  const loopEnabled = dom.combineLoop.checked;
+  const outputMode = document.querySelector('.combine-output-btn.selected')?.getAttribute('data-mode') || 'mixdown';
+
+  const checkedIds: string[] = [];
+  dom.combineTrackList.querySelectorAll('input[type="checkbox"]:checked').forEach(cb => {
+    checkedIds.push((cb as HTMLInputElement).getAttribute('data-track-id')!);
+  });
+
+  const volumes: Record<string, number> = {};
+  dom.combineSliders.querySelectorAll('input[type="range"]').forEach(slider => {
+    const id = (slider as HTMLInputElement).getAttribute('data-track-id')!;
+    volumes[id] = parseInt((slider as HTMLInputElement).value) / 100;
+  });
+
+  if (outputMode === 'mixdown') {
+    audioEngine._ensureContext();
+    const sr = audioEngine.sampleRate;
+    let maxLen = audioEngine.audioBuffer!.length;
+
+    const buffers: { data: Float32Array; volume: number }[] = [];
+
+    for (const id of checkedIds) {
+      let buf: AudioBuffer | null;
+      if (id === 'main') buf = audioEngine.audioBuffer;
+      else {
+        const t = extraTracks.find(t => String(t.id) === id);
+        buf = t?.engine.audioBuffer || null;
+      }
+      if (!buf) continue;
+
+      const mono = buf.numberOfChannels === 1 ? buf.getChannelData(0) : (() => {
+        const m = new Float32Array(buf!.length);
+        for (let ch = 0; ch < buf!.numberOfChannels; ch++) {
+          const d = buf!.getChannelData(ch);
+          for (let i = 0; i < d.length; i++) m[i] += d[i] / buf!.numberOfChannels;
+        }
+        return m;
+      })();
+
+      maxLen = Math.max(maxLen, mono.length);
+      buffers.push({ data: mono, volume: volumes[id] || 1 });
+    }
+
+    const mixData = new Float32Array(maxLen);
+    for (const { data, volume } of buffers) {
+      for (let i = 0; i < maxLen; i++) {
+        const idx = loopEnabled ? i % data.length : i;
+        if (idx < data.length) {
+          mixData[i] += data[idx] * volume;
+        }
+      }
+    }
+
+    for (let i = 0; i < maxLen; i++) {
+      mixData[i] = Math.max(-1, Math.min(1, mixData[i]));
+    }
+
+    const mixBuf = audioEngine.audioContext!.createBuffer(1, maxLen, sr);
+    mixBuf.getChannelData(0).set(mixData);
+
+    while (extraTracks.length > 0) removeExtraTrack(extraTracks[0].id);
+    audioEngine.audioBuffer = mixBuf;
+    onBufferChanged(false);
+    computeSpectrogram();
+  }
+
+  if (outputMode === 'separate' && loopEnabled) {
+    const mainLen = audioEngine.audioBuffer!.length;
+    for (const t of extraTracks) {
+      if (t.engine.audioBuffer && t.engine.audioBuffer.length < mainLen) {
+        const src = t.engine.audioBuffer.getChannelData(0);
+        audioEngine._ensureContext();
+        const looped = audioEngine.audioContext!.createBuffer(1, mainLen, t.engine.audioBuffer.sampleRate);
+        const dst = looped.getChannelData(0);
+        for (let i = 0; i < mainLen; i++) {
+          dst[i] = src[i % src.length];
+        }
+        t.engine.audioBuffer = looped;
+        t.waveform.clearCache();
+        t.waveform.buildMipmaps();
+      }
+    }
+    redrawAll();
+  }
+
+  dom.combineDialog.style.display = 'none';
+});
 
 // ===== Menu Bar =====
 function setupMenuBar(): void {
