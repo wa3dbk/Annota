@@ -1,6 +1,8 @@
-# Annota - Web Audio Editor
+# Annota - Audacity-Style Web Audio Editor
 
 A fully client-side, browser-based audio and video annotation tool inspired by Audacity. Built with TypeScript and bundled with Vite. No backend, no server-side processing -- all audio editing happens in your browser. Supports local audio/video files, remote URLs, and YouTube videos.
+
+![Annota Global View](docs/img/global-view.png)
 
 ## Quick Start
 
