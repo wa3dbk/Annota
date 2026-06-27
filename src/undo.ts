@@ -1,5 +1,5 @@
 // ===== Undo/Redo Manager =====
-// Snapshots audio buffer + label state before destructive actions
+// Snapshots audio buffer + segment state before destructive actions
 
 import type { Segment, Speaker, SerializedAudioBuffer } from './types';
 

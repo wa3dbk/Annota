@@ -410,7 +410,7 @@ export class SegmentTrack {
 
     this.ctx.clearRect(0, 0, w, h);
 
-    const bgColor = this._colors ? this._colors.labelBg : '#fafafa';
+    const bgColor = this._colors ? this._colors.segmentBg : '#fafafa';
     this.ctx.fillStyle = bgColor;
     this.ctx.fillRect(0, 0, w, h);
 
@@ -486,7 +486,7 @@ export class SegmentTrack {
     const prevAlpha = ctx.globalAlpha;
     ctx.globalAlpha = Math.min(prevAlpha, 0.95);
     const bgColor = this._colors
-      ? (isSelected ? this._colors.labelBadgeBgSelected : this._colors.labelBadgeBg)
+      ? (isSelected ? this._colors.segmentBadgeBgSelected : this._colors.segmentBadgeBg)
       : (isSelected ? '#fff7ed' : '#ffffff');
     ctx.fillStyle = bgColor;
     ctx.strokeStyle = color;
@@ -546,7 +546,7 @@ export class SegmentTrack {
     const availWidth = maxX - textStart - padX;
     if (availWidth > 10) {
       ctx.font = '11px -apple-system, BlinkMacSystemFont, sans-serif';
-      ctx.fillStyle = this._colors ? this._colors.labelText : color;
+      ctx.fillStyle = this._colors ? this._colors.segmentText : color;
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
 

@@ -8,7 +8,7 @@ export interface SerializedAudioBuffer {
   channels: Float32Array[];
 }
 
-// Label data structure
+// Legacy Label interface — kept only for project migration
 export interface Label {
   id: string;
   start: number;
@@ -19,7 +19,7 @@ export interface Label {
   color: string | null;
 }
 
-// Segment data structure (replaces Label)
+// Segment data structure
 export interface Segment {
   id: string;
   start: number;
@@ -109,12 +109,12 @@ export interface ThemeColors {
   timelineText: string;
   timelineTick: string;
   timelineTickMajor: string;
-  labelBg: string;
-  labelRegionFill: string;
-  labelBorder: string;
-  labelBadgeBg: string;
-  labelBadgeBgSelected: string;
-  labelText: string;
+  segmentBg: string;
+  segmentRegionFill: string;
+  segmentBorder: string;
+  segmentBadgeBg: string;
+  segmentBadgeBgSelected: string;
+  segmentText: string;
   axisBg: string;
   axisTick: string;
   axisText: string;
@@ -250,7 +250,7 @@ export interface ExtraTrack {
   panNode: StereoPannerNode | null;
 }
 
-// Category definition for labels
+// Category definition for segments
 export interface CategoryDefinition {
   label: string;
   color: string;

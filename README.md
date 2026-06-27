@@ -51,12 +51,12 @@ npm run typecheck
 
 ### Visualization
 - **Waveform view**: Peak-cached rendering with hierarchical mipmap for instant zoom
-- **Spectrogram view**: STFT-based frequency display with magma colormap
+- **Spectrogram view**: STFT-based frequency display with magma colormap, correct Nyquist frequency range
 - **Video preview**: Floating draggable panel or inline display for video files and YouTube
 - **dB scale overlay**: Amplitude scale on the left edge in waveform mode
-- **Frequency scale overlay**: Hz scale on the left edge in spectrogram mode
+- **Frequency scale overlay**: Hz scale on the left edge in spectrogram mode (up to actual Nyquist)
 - **Time ruler**: Adaptive tick marks with time labels
-- **Zoom**: Ctrl+scroll, +/- buttons, or Fit to view
+- **Zoom**: Ctrl+scroll (smooth trackpad support with delta accumulation), +/- buttons, or Fit to view
 - **Dark / Light theme**: Toggle with theme-aware canvas rendering for all views
 
 ### Audio Effects
@@ -72,43 +72,60 @@ npm run typecheck
 - **Resample**: Change sample rate (8kHz - 48kHz)
 
 ### Analysis
+- **Spectrum Analysis**: Welch's method power spectrum (Hann window, 4096-point FFT, averaged magnitude in dB) with log/linear frequency axis
 - **Spectrogram Analysis**: View spectrogram of selected region in a floating panel
 - **Mel Filterbank**: Compute and display mel-scale filterbank energies
 - **MFCC**: Compute and display Mel-frequency cepstral coefficients
 - **Save as Image**: Export any analysis panel view as PNG
 
-### Label Track (Annotations)
-- **Point labels**: Click on the label track to add a timestamp marker
-- **Region labels**: Drag on the label track to create a time range annotation
-- **Edit text**: Double-click a label to rename it
-- **Categories**: Assign labels to categories (speech, noise, music, silence, other)
-- **Search & filter**: Find labels by text or filter by category
-- **Drag & resize**: Move labels or resize region edges
-- **Export formats**: Audacity .txt, JSON, SRT, WebVTT, ELAN XML
+### Segment Track (Annotations)
+- **Region segments**: Drag on the segment track to create a time range annotation
+- **Point segments**: Click on the segment track to add a timestamp marker
+- **Edit text**: Double-click a segment to rename it
+- **Categories**: Assign segments to categories (speech, noise, music, silence, other)
+- **Speaker system**: Assign speakers to segments with color-coded badges (8-color palette)
+- **Speaker management**: Add, remove, rename, recolor, and merge speakers via a dedicated dialog
+- **Split / Merge**: Split segments at cursor (Ctrl+T), merge adjacent segments
+- **Search & filter**: Find segments by text or filter by category
+- **Drag & resize**: Move segments or resize region edges (clamped to audio duration)
+- **Export formats**: Audacity .txt, JSON, SRT, WebVTT, STM, TSV, ELAN XML (7 formats)
 - **Import formats**: Audacity .txt, JSON, SRT, WebVTT (auto-detected)
+- **TSV column picker**: Choose which columns to include in TSV export (start, end, speaker, text, category, duration)
+
+### Channel Operations
+- **Split Stereo to Mono**: Split a stereo track into two independent mono tracks
+- **Combine to Stereo**: Combine two mono tracks into a single stereo track (choose left/right channels)
+- **Mix and Render**: Mix all unmuted tracks down to a single mono track
+
+### Track Combining
+- **Combine Tracks**: Mix multiple tracks together with adjustable balance
+- **Loop shorter track**: Optionally loop the shorter track to fill the longer track's duration
+- **Volume preview**: Preview volume levels before combining
+- **Output modes**: Mixdown (single track) or Separate (keep as individual tracks)
 
 ### Per-Track Controls
 - **Volume slider**: Adjust gain per track
 - **Pan slider**: Stereo panning per track
 - **Mute (M)**: Silence individual tracks
 - **Solo (S)**: Isolate individual tracks
-- **Resizable track heights**: Drag the bottom edge of any track (audio or labels) to resize vertically
+- **Resizable track heights**: Drag the bottom edge of any track (audio or segments) to resize vertically
 - **Mixdown export**: Mix all unmuted tracks to a single WAV file
 
 ### Project Management
-- **Save/Load projects**: Persist full project state (audio + labels + viewport) via IndexedDB
+- **Save/Load projects**: Persist full project state (audio + segments + speakers + viewport) via IndexedDB
 - **Auto-save**: Automatic background saves every 30 seconds
 - **Undo/Redo**: Up to 30 levels of undo history for destructive operations
+- **Migration**: Automatically migrates old label-based projects to the new segment system
 
 ### Menu Bar
 
 | Menu | Items |
 |------|-------|
-| File | New Project, Open Project, Save Project, Import Audio, Load from URL, Load YouTube Video, Import Labels, Export Audio, Export Labels, Export Mixdown, Export Waveform Image |
-| Edit | Undo, Redo, Cut, Copy, Paste, Duplicate, Delete, Select All |
-| Tracks | Add Audio Track, Split Channels, Mixdown Export |
-| Effects | Fade In/Out, Normalize, Gain, EQ, Compressor, Reverb, Noise Reduction, Speed/Pitch, Saturation, Resample |
-| Analysis | Spectrogram, Mel Filterbank, MFCC, Save Analysis Image |
+| File | New Project, Open Project, Save Project, Import Audio, Load from URL, Load YouTube Video, Import Segments, Export Audio, Export Segments, Export Mixdown, Export Waveform Image |
+| Edit | Undo, Redo, Cut, Copy, Paste, Duplicate, Delete, Select All, Deselect, Reset Audio |
+| Tracks | Add Audio Track, Append Audio, Separate Channels, Split Stereo to Mono, Combine to Stereo, Mix and Render, Combine Tracks, Manage Speakers, Add Segment, Resample Track |
+| Effects | Fade In/Out, Normalize, Gain, Noise Reduction, Reverb, Saturation, EQ, Compressor, Speed/Pitch |
+| Analysis | Spectrum, Spectrogram, Filterbank (Mel), MFCC, Save Analysis Image |
 | Help | Keyboard Shortcuts, About |
 
 ### Keyboard Shortcuts
@@ -125,14 +142,15 @@ npm run typecheck
 | Ctrl+V | Paste at cursor |
 | Ctrl+D | Duplicate selection |
 | Ctrl+A | Select all |
-| Ctrl+B | Add label |
+| Ctrl+B | Add segment |
+| Ctrl+T | Split segment at cursor |
 | Ctrl+= | Zoom in |
 | Ctrl+- | Zoom out |
 | Ctrl+F | Fit to view |
 | Ctrl+U | Load from URL |
 | V | Toggle video preview (floating / inline / hidden) |
 | M | Toggle mute on main track |
-| Delete | Delete selected audio or label |
+| Delete | Delete selected audio or segment |
 | Home / End | Jump to start / end |
 | Arrow Left/Right | Scroll |
 | Esc | Deselect / Close dialog |
@@ -154,15 +172,16 @@ Annota/
     ├── types.ts            # Shared interfaces and type definitions
     ├── utils.ts            # Time formatting, color maps, HiDPI canvas setup
     ├── fft.ts              # Radix-2 Cooley-Tukey FFT + window functions
-    ├── viewport.ts         # Zoom/scroll state, coordinate transforms
+    ├── viewport.ts         # Zoom/scroll state, coordinate transforms, smooth trackpad zoom
     ├── undo.ts             # Undo/redo stack with AudioBuffer snapshots
     ├── audio-engine.ts     # Web Audio API: decode, play, edit, encode WAV, load from ArrayBuffer
     ├── waveform.ts         # Mipmap peak cache + theme-aware rendering
     ├── spectrogram.ts      # STFT computation + rendering
     ├── timeline.ts         # Time ruler with adaptive ticks
     ├── selection.ts        # Selection overlay + playback cursor
-    ├── label-track.ts      # Annotation model, rendering, import/export
-    ├── clipboard.ts        # Cut/copy/paste for audio and labels
+    ├── segment-track.ts    # Segment model, rendering, speaker badges, import/export (7 formats)
+    ├── speaker-manager.ts  # Speaker CRUD, merge, color palette management
+    ├── clipboard.ts        # Cut/copy/paste for audio and segments
     ├── resampler.ts        # Sample rate conversion
     ├── effects.ts          # Core audio effects (fade, normalize, gain)
     ├── worker.ts           # Self-contained Web Worker for STFT + peaks
@@ -174,10 +193,11 @@ Annota/
     │   └── time-stretch.ts     # Speed/pitch change
     ├── analysis/
     │   ├── filterbank.ts   # Mel filterbank computation
-    │   └── mfcc.ts         # MFCC extraction
+    │   ├── mfcc.ts         # MFCC extraction
+    │   └── spectrum.ts     # Welch's method power spectrum analysis + rendering
     ├── ui/
     │   ├── icons.ts        # SVG icon strings
-    │   ├── context-menu.ts # Right-click context menu
+    │   ├── context-menu.ts # Right-click context menu (with speaker assignment submenu)
     │   ├── menu-bar.ts     # Application menu bar
     │   ├── theme.ts        # Light/dark theme manager
     │   └── analysis-panel.ts   # Floating analysis display + save as PNG
@@ -192,15 +212,17 @@ Annota/
 
 2. **Hierarchical peak mipmap**: Waveform peaks are pre-computed at power-of-2 zoom levels (spp=2 to 65536). Zooming is instant because peaks are derived from coarser levels rather than re-scanned from raw samples.
 
-3. **`samplesPerPixel` as zoom unit**: All coordinate transforms go through the Viewport class. Zoom levels are powers of 2 for cache alignment.
+3. **`samplesPerPixel` as zoom unit**: All coordinate transforms go through the Viewport class. Zoom levels are powers of 2 for cache alignment. Smooth trackpad zoom uses delta accumulation with damping.
 
 4. **Offline STFT**: The spectrogram is computed once after loading (via Web Worker), pre-rendered to an offscreen canvas, then drawn via fast `drawImage` with source rectangles.
 
 5. **HiDPI support**: All canvases are scaled by `devicePixelRatio` for sharp rendering on Retina displays.
 
-6. **Theme-aware rendering**: All canvas renderers (waveform, spectrogram, timeline, selection, labels, axis overlays) accept theme colors from the ThemeManager and update on toggle.
+6. **Theme-aware rendering**: All canvas renderers (waveform, spectrogram, timeline, selection, segments, axis overlays) accept theme colors from the ThemeManager and update on toggle.
 
-7. **Resizable tracks**: All track rows (audio and labels) live in the same flex container and are individually resizable via drag handles.
+7. **Resizable tracks**: All track rows (audio and segments) live in the same flex container and are individually resizable via drag handles.
+
+8. **Segment/Speaker system**: Segments replace the old label system with speaker assignment, split/merge operations, and 7 export formats. Speakers are managed independently with CRUD operations and color palette.
 
 ## Browser Compatibility
 

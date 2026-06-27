@@ -453,7 +453,7 @@ function restoreFromSnapshot(snapshot: any): void {
   if (snapshot.speakers) speakerManager.speakers = snapshot.speakers;
   selectionManager.setCursor(snapshot.cursorTime);
   selectionManager.clearSelection();
-  onBufferChanged(true);
+  onBufferChanged(false);
 }
 
 undoManager.onChange(() => updateUndoButtons());
